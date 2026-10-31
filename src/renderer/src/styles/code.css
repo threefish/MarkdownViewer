@@ -1,0 +1,121 @@
+:root {
+  --hl-keyword: #a626a4;
+  --hl-string: #3f8a3f;
+  --hl-comment: #9aa0a6;
+  --hl-number: #986801;
+  --hl-title: #3a6ea5;
+  --hl-attr: #986801;
+  --hl-builtin: #b58105;
+  --hl-variable: #c0392b;
+  --hl-meta: #7a5fa0;
+}
+
+html[data-theme='dark'] {
+  --hl-keyword: #c678dd;
+  --hl-string: #98c379;
+  --hl-comment: #5c6370;
+  --hl-number: #d19a66;
+  --hl-title: #61afef;
+  --hl-attr: #d19a66;
+  --hl-builtin: #e6c07b;
+  --hl-variable: #e06c75;
+  --hl-meta: #7a8bd6;
+}
+
+html[data-theme='sepia'] {
+  --hl-keyword: #8c3b8b;
+  --hl-string: #4a7a34;
+  --hl-comment: #a0937a;
+  --hl-number: #b06a1b;
+  --hl-title: #3d6a96;
+  --hl-attr: #a86a1a;
+  --hl-builtin: #9a6a12;
+  --hl-variable: #b0432f;
+  --hl-meta: #7a5f95;
+}
+
+.markdown-body .hljs {
+  color: var(--text);
+  background: transparent;
+}
+
+.markdown-body .hljs-comment,
+.markdown-body .hljs-quote {
+  color: var(--hl-comment);
+  font-style: italic;
+}
+
+.markdown-body .hljs-keyword,
+.markdown-body .hljs-selector-tag,
+.markdown-body .hljs-doctag,
+.markdown-body .hljs-template-tag,
+.markdown-body .hljs-name {
+  color: var(--hl-keyword);
+}
+
+.markdown-body .hljs-string,
+.markdown-body .hljs-regexp,
+.markdown-body .hljs-addition,
+.markdown-body .hljs-selector-attr,
+.markdown-body .hljs-selector-pseudo,
+.markdown-body .hljs-char.escape_ {
+  color: var(--hl-string);
+}
+
+.markdown-body .hljs-number,
+.markdown-body .hljs-literal,
+.markdown-body .hljs-symbol,
+.markdown-body .hljs-bullet,
+.markdown-body .hljs-attribute,
+.markdown-body .hljs-property {
+  color: var(--hl-number);
+}
+
+.markdown-body .hljs-title,
+.markdown-body .hljs-section,
+.markdown-body .hljs-title.function_,
+.markdown-body .hljs-selector-id,
+.markdown-body .hljs-selector-class {
+  color: var(--hl-title);
+}
+
+.markdown-body .hljs-built_in,
+.markdown-body .hljs-type,
+.markdown-body .hljs-title.class_,
+.markdown-body .hljs-class .hljs-title,
+.markdown-body .hljs-params {
+  color: var(--hl-builtin);
+}
+
+.markdown-body .hljs-variable,
+.markdown-body .hljs-template-variable,
+.markdown-body .hljs-deletion,
+.markdown-body .hljs-subst {
+  color: var(--hl-variable);
+}
+
+.markdown-body .hljs-meta,
+.markdown-body .hljs-meta .hljs-keyword {
+  color: var(--hl-meta);
+}
+
+.markdown-body .hljs-tag {
+  color: var(--text-2);
+}
+
+.markdown-body .hljs-attr {
+  color: var(--hl-attr);
+}
+
+.markdown-body .hljs-emphasis {
+  font-style: italic;
+}
+
+.markdown-body .hljs-strong {
+  font-weight: 600;
+}
+
+.markdown-body .hljs-link {
+  color: var(--accent);
+  text-decoration: underline;
+}

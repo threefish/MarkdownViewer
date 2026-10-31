@@ -1,0 +1,352 @@
+.markdown-body {
+  font-size: var(--prose-size, 16px);
+  font-family: var(--prose-font, var(--font-sans));
+  line-height: var(--prose-leading, 1.78);
+  color: var(--text);
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin: 1.9em 0 0.65em;
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  scroll-margin-top: 30px;
+}
+
+.markdown-body h1 {
+  margin-top: 0.6em;
+  font-size: 1.95em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.markdown-body h2 {
+  font-size: 1.45em;
+}
+
+.markdown-body h3 {
+  font-size: 1.18em;
+}
+
+.markdown-body h4 {
+  font-size: 1.03em;
+}
+
+.markdown-body h5,
+.markdown-body h6 {
+  font-size: 0.95em;
+  color: var(--text-2);
+}
+
+.markdown-body p {
+  margin: 0 0 1.05em;
+}
+
+.markdown-body a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.markdown-body a:hover {
+  border-bottom-color: var(--accent);
+}
+
+.markdown-body strong {
+  font-weight: 650;
+}
+
+.markdown-body hr {
+  height: 1px;
+  border: 0;
+  background: var(--border);
+  margin: 2.4em 0;
+}
+
+.markdown-body blockquote {
+  margin: 1.4em 0;
+  padding: 0.35em 1.1em;
+  border-left: 3px solid var(--border-strong);
+  border-radius: 0 6px 6px 0;
+  background: var(--quote-bg);
+  color: var(--text-2);
+}
+
+.markdown-body blockquote > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0 0 1.05em;
+  padding-left: 1.5em;
+}
+
+.markdown-body li {
+  margin: 0.28em 0;
+}
+
+.markdown-body li > p {
+  margin: 0 0 0.4em;
+}
+
+.markdown-body li::marker {
+  color: var(--text-3);
+}
+
+.markdown-body .contains-task-list {
+  list-style: none;
+  padding-left: 1.2em;
+}
+
+.markdown-body input[type='checkbox'] {
+  margin: 0 0.5em 0 -1.2em;
+  vertical-align: -0.08em;
+  accent-color: var(--accent);
+}
+
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1.5em auto;
+  border-radius: 6px;
+}
+
+.markdown-body :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  background: var(--inline-code-bg);
+}
+
+.markdown-body pre {
+  font-family: var(--font-mono);
+}
+
+.code-block {
+  margin: 1.5em 0;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.code-head {
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+}
+
+.code-block pre code {
+  font-family: var(--font-mono);
+  font-size: 0.84em;
+  line-height: 1.62;
+  background: none;
+  padding: 0;
+}
+
+.table-wrap {
+  margin: 1.5em 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+
+.markdown-body th,
+.markdown-body td {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-body th:not(:last-child),
+.markdown-body td:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.markdown-body thead th {
+  background: color-mix(in srgb, var(--bg-sidebar) 65%, transparent);
+  font-weight: 600;
+}
+
+.markdown-body tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.markdown-body tbody tr:hover {
+  background: color-mix(in srgb, var(--hover) 70%, transparent);
+}
+
+.markdown-body details {
+  margin: 1em 0;
+  padding: 0.6em 0.9em;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-sidebar);
+}
+
+.markdown-body summary {
+  cursor: default;
+  color: var(--text-2);
+  font-size: 0.95em;
+}
+
+.markdown-body details[open] summary {
+  margin-bottom: 0.6em;
+}
+
+.markdown-body mark {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: inherit;
+  padding: 0 0.15em;
+  border-radius: 2px;
+}
+
+.markdown-body kbd {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  padding: 0.12em 0.42em;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bg-elev);
+}
+
+.markdown-body sup,
+.markdown-body sub {
+  font-size: 0.78em;
+}
+
+.markdown-body .katex {
+  font-size: 1.02em;
+}
+
+.markdown-body .katex-display {
+  margin: 1.5em 0;
+  padding: 0.2em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.markdown-body .katex-error {
+  color: var(--danger);
+}
+
+/* mermaid */
+
+.mermaid-block {
+  margin: 1.7em 0;
+  display: flex;
+  justify-content: center;
+}
+
+.mermaid-svg {
+  width: 100%;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.mermaid-svg svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-placeholder {
+  padding: 18px;
+  font-size: 12px;
+  color: var(--text-3);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  width: 100%;
+  text-align: center;
+}
+
+.mermaid-error {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px dashed color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 6%, var(--bg));
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.mermaid-error-title {
+  font-weight: 600;
+  color: var(--danger);
+  margin-bottom: 6px;
+}
+
+.mermaid-error-message,
+.mermaid-error-source {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  color: var(--text-2);
+}
+
+.mermaid-error details {
+  margin-top: 8px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.mermaid-error summary {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.mermaid-error-source {
+  margin-top: 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+/* footnotes / misc */
+
+.markdown-body table {
+  font-variant-numeric: tabular-nums;
+}
+
+.markdown-body .footnotes {
+  margin-top: 3em;
+  padding-top: 1em;
+  border-top: 1px solid var(--border);
+  font-size: 0.88em;
+  color: var(--text-2);
+}

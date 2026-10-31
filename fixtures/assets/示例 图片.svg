@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320" viewBox="0 0 640 320">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f5d8a" />
+      <stop offset="1" stop-color="#7aa7cf" />
+    </linearGradient>
+  </defs>
+  <rect width="640" height="320" rx="18" fill="url(#bg)" />
+  <circle cx="520" cy="70" r="72" fill="#ffffff" opacity="0.08" />
+  <circle cx="110" cy="270" r="96" fill="#ffffff" opacity="0.06" />
+  <text x="48" y="132" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="42" font-weight="600" fill="#ffffff">
+    示例图片
+  </text>
+  <text x="48" y="184" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="22" fill="#e8f1fb">
+    assets/示例 图片.svg
+  </text>
+  <text x="48" y="232" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="17" fill="#cfe0f2">
+    相对路径 · 中文目录 · 空格文件名
+  </text>
+</svg>
