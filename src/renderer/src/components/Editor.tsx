@@ -4,7 +4,9 @@ import {
   EditorView,
   drawSelection,
   highlightActiveLine,
+  highlightActiveLineGutter,
   keymap,
+  lineNumbers,
   placeholder
 } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from '@codemirror/commands'
@@ -14,7 +16,13 @@ import {
   search,
   searchKeymap
 } from '@codemirror/search'
-import { HighlightStyle, bracketMatching, syntaxHighlighting } from '@codemirror/language'
+import {
+  HighlightStyle,
+  bracketMatching,
+  foldGutter,
+  foldKeymap,
+  syntaxHighlighting
+} from '@codemirror/language'
 import { markdown } from '@codemirror/lang-markdown'
 import { tags } from '@lezer/highlight'
 import type { ThemeMode } from '../../../shared/types'
@@ -31,6 +39,7 @@ interface Props {
   value: string
   theme: ThemeMode
   wordWrap: boolean
+  showLineNumbers: boolean
   language: string
   readOnly: boolean
   lite: boolean
@@ -54,10 +63,29 @@ function editorTheme(theme: ThemeMode): Extension {
           overflow: 'auto'
         },
         '.cm-content': {
-          padding: '34px 44px 150px',
-          maxWidth: 'min(calc(var(--content-w) + 88px), 100%)',
-          margin: '0 auto',
+          padding: '28px 32px 150px',
           caretColor: 'var(--accent)'
+        },
+        '.cm-gutters': {
+          backgroundColor: 'transparent',
+          color: 'var(--text-3)',
+          border: 'none',
+          paddingLeft: '4px'
+        },
+        '.cm-lineNumbers .cm-gutterElement': {
+          padding: '0 10px 0 14px',
+          minWidth: '46px',
+          textAlign: 'right'
+        },
+        '.cm-foldGutter .cm-gutterElement': {
+          padding: '0 6px',
+          cursor: 'pointer'
+        },
+        '.cm-foldGutter span': { color: 'var(--text-3)', padding: '0 1px' },
+        '.cm-foldGutter .cm-gutterElement:hover span': { color: 'var(--text)' },
+        '.cm-activeLineGutter': {
+          backgroundColor: 'var(--hover)',
+          color: 'var(--text)'
         },
         '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)' },
         '.cm-selectionBackground, .cm-content ::selection': {
@@ -179,6 +207,7 @@ export function Editor({
   value,
   theme,
   wordWrap,
+  showLineNumbers,
   language,
   readOnly,
   lite,
@@ -194,6 +223,8 @@ export function Editor({
   const langCompartment = useRef(new Compartment())
   const readCompartment = useRef(new Compartment())
   const featureCompartment = useRef(new Compartment())
+  const lineNumberCompartment = useRef(new Compartment())
+  const foldCompartment = useRef(new Compartment())
   const initialLang = useRef<Extension | null>(null)
   if (initialLang.current === null) {
     initialLang.current = lite ? [] : language === 'markdown' ? markdown() : []
@@ -209,6 +240,11 @@ export function Editor({
 
   const featureExtensions = (): Extension =>
     lite ? [] : [highlightActiveLine(), highlightSelectionMatches(), bracketMatching()]
+
+  const lineNumberExtensions = (): Extension =>
+    showLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []
+
+  const foldExtensions = (): Extension => (lite ? [] : foldGutter())
 
   useEffect(() => {
     changeRef.current = onChange
@@ -229,11 +265,19 @@ export function Editor({
           history(),
           wrapCompartment.current.of(wordWrap ? EditorView.lineWrapping : []),
           drawSelection(),
+          lineNumberCompartment.current.of(lineNumberExtensions()),
+          foldCompartment.current.of(foldExtensions()),
           featureCompartment.current.of(featureExtensions()),
           search({ top: true }),
           langCompartment.current.of(initialLang.current ?? []),
           readCompartment.current.of(readOnlyExtensions()),
-          keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+          keymap.of([
+            ...defaultKeymap,
+            ...historyKeymap,
+            ...searchKeymap,
+            ...foldKeymap,
+            indentWithTab
+          ]),
           themeCompartment.current.of(editorTheme(theme)),
           EditorView.theme({ '&': { fontSize: 'var(--editor-size, 13.5px)' } }),
           EditorView.updateListener.of((update) => {
@@ -315,6 +359,20 @@ export function Editor({
   useEffect(() => {
     viewRef.current?.dispatch({
       effects: featureCompartment.current.reconfigure(featureExtensions())
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lite])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: lineNumberCompartment.current.reconfigure(lineNumberExtensions())
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showLineNumbers])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: foldCompartment.current.reconfigure(foldExtensions())
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lite])

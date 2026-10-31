@@ -300,6 +300,18 @@ export function SettingsDialog({
             <span className="setting-row-value">{editorFont.toFixed(1)} px</span>
           </div>
           <div className="setting-row">
+            <span className="setting-row-label">显示行号</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.editorLineNumbers}
+              aria-label="编辑器与代码阅读显示行号"
+              className={`switch${settings.editorLineNumbers ? ' on' : ''}`}
+              onClick={() => void onPatch({ editorLineNumbers: !settings.editorLineNumbers })}
+            />
+          </div>
+          <div className="hint">行号与当前行提示显示在编辑器、代码阅读和 Markdown 源码视图中。</div>
+          <div className="setting-row">
             <span className="setting-row-label">自动换行</span>
             <button
               type="button"

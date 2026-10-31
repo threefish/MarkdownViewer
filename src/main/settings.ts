@@ -135,6 +135,7 @@ function defaults(): Settings {
     contentLineHeight: DEFAULT_LEADING,
     editorFontSize: DEFAULT_EDITOR_FONT,
     editorWordWrap: true,
+    editorLineNumbers: true,
     restoreSession: true,
     hideNoisyEntries: true,
     rememberWindowBounds: true,
@@ -167,6 +168,7 @@ export function getSettings(): Settings {
       contentLineHeight: normalizeLeading(parsed.contentLineHeight),
       editorFontSize: normalizeEditorFont(parsed.editorFontSize),
       editorWordWrap: normalizeBool(parsed.editorWordWrap, true),
+      editorLineNumbers: normalizeBool(parsed.editorLineNumbers, true),
       restoreSession: normalizeBool(parsed.restoreSession, true),
       hideNoisyEntries: normalizeBool(parsed.hideNoisyEntries, true),
       rememberWindowBounds: normalizeBool(parsed.rememberWindowBounds, true),
@@ -199,6 +201,8 @@ export function patchSettings(patch: Partial<Settings>): Settings {
     next.editorFontSize = normalizeEditorFont(patch.editorFontSize)
   if (patch.editorWordWrap !== undefined)
     next.editorWordWrap = normalizeBool(patch.editorWordWrap, true)
+  if (patch.editorLineNumbers !== undefined)
+    next.editorLineNumbers = normalizeBool(patch.editorLineNumbers, true)
   if (patch.restoreSession !== undefined)
     next.restoreSession = normalizeBool(patch.restoreSession, true)
   if (patch.hideNoisyEntries !== undefined)
@@ -238,6 +242,7 @@ export function resetPreferences(): Settings {
     contentLineHeight: base.contentLineHeight,
     editorFontSize: base.editorFontSize,
     editorWordWrap: base.editorWordWrap,
+    editorLineNumbers: base.editorLineNumbers,
     restoreSession: base.restoreSession,
     hideNoisyEntries: base.hideNoisyEntries,
     rememberWindowBounds: base.rememberWindowBounds

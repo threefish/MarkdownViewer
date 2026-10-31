@@ -40,6 +40,7 @@ export interface Settings {
   contentLineHeight: number
   editorFontSize: number
   editorWordWrap: boolean
+  editorLineNumbers: boolean
   restoreSession: boolean
   hideNoisyEntries: boolean
   rememberWindowBounds: boolean

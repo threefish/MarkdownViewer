@@ -42,6 +42,7 @@ const INITIAL_SETTINGS: Settings = {
   contentLineHeight: 1.78,
   editorFontSize: 13.5,
   editorWordWrap: true,
+  editorLineNumbers: true,
   restoreSession: true,
   hideNoisyEntries: true,
   rememberWindowBounds: true,
@@ -1422,6 +1423,7 @@ export default function App(): JSX.Element {
                   value={active.draft ?? active.content}
                   theme={theme}
                   wordWrap={settings.editorWordWrap && !activeLongLine}
+                  showLineNumbers={settings.editorLineNumbers}
                   language={activeIsMd ? 'markdown' : languageKeyForPath(active.path)}
                   readOnly={!active.editing}
                   lite={activeLite}
