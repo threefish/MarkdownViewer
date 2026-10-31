@@ -1,5 +1,6 @@
 import { BrowserWindow, Menu, Tray, app, nativeImage, screen, shell } from 'electron'
 import path from 'node:path'
+import trayIconPath from '../../build/icon.png?asset'
 import type { ThemeMode, WindowBounds } from '../shared/types'
 import { getSettings, patchSettings } from './settings'
 
@@ -99,8 +100,8 @@ export function requestQuit(): void {
 
 export function setupTray(): void {
   if (tray) return
-  const icon = nativeImage.createFromPath(path.join(app.getAppPath(), 'build/icon.png'))
-  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon.resize({ width: 32, height: 32 }))
+  const icon = nativeImage.createFromPath(trayIconPath)
+  tray = new Tray(icon.resize({ width: 32, height: 32 }))
   tray.setToolTip('Markdown Viewer')
   tray.setContextMenu(
     Menu.buildFromTemplate([
