@@ -1391,8 +1391,6 @@ export default function App(): JSX.Element {
           onHideEntry={hideTreeEntry}
           onPickHidden={openHiddenPicker}
           onRemoveRoot={removeRoot}
-          onSettings={() => setSettingsOpen((open) => !open)}
-          onCollapse={toggleSidebar}
           onResizeCommit={persistSidebarWidth}
         />
 

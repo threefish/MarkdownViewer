@@ -1,6 +1,6 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { FsEntry } from '../../../shared/types'
-import { BookIcon, ListIcon, PanelIcon, SettingsIcon } from './Icons'
+import { BookIcon, ListIcon } from './Icons'
 import { FilesPanel } from './FilesPanel'
 import { Outline } from './Outline'
 
@@ -26,8 +26,6 @@ interface Props {
   onHideEntry: (entry: FsEntry) => void
   onPickHidden: (dir: string) => void
   onRemoveRoot: (root: string) => void
-  onSettings: () => void
-  onCollapse: () => void
   onResizeCommit: (width: number) => void
 }
 
@@ -54,8 +52,6 @@ export function Sidebar({
   onHideEntry,
   onPickHidden,
   onRemoveRoot,
-  onSettings,
-  onCollapse,
   onResizeCommit
 }: Props): React.JSX.Element {
   const startResize = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -121,17 +117,6 @@ export function Sidebar({
           ) : (
             <Outline docKey={docKey} scrollRef={scrollRef} />
           )}
-        </div>
-
-        <div className="side-foot">
-          <button type="button" className="foot-btn" onClick={onSettings}>
-            <SettingsIcon />
-            设置
-          </button>
-          <button type="button" className="foot-btn" onClick={onCollapse} title="收起侧栏 (Ctrl+B)">
-            <PanelIcon />
-            收起
-          </button>
         </div>
       </div>
       <div className="side-resizer" title="拖动调整侧栏宽度" onPointerDown={startResize} />

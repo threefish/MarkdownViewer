@@ -26,15 +26,36 @@ Markdown Viewer 是一个本地优先的桌面阅读器：没有账号、没有�
 
 ## 截图
 
-| 表格、公式与 Mermaid | 深色主题 |
+| 表格与公式 | 深色主题 |
 |:---:|:---:|
-| ![表格、公式与 Mermaid](docs/screenshots/reading-light.png) | ![深色主题](docs/screenshots/reading-dark.png) |
+| ![表格与公式](docs/screenshots/reading-light.png) | ![深色主题](docs/screenshots/reading-dark.png) |
 
-| 护眼米色 | 代码编辑与查找 |
+| GitHub 深色 | One Dark |
 |:---:|:---:|
-| ![护眼米色](docs/screenshots/reading-sepia.png) | ![代码编辑与查找](docs/screenshots/editor-search.png) |
+| ![GitHub 深色](docs/screenshots/reading-github-dark.png) | ![One Dark](docs/screenshots/reading-one-dark.png) |
 
-![设置](docs/screenshots/settings.png)
+| 护眼米色 | 代码编辑与查找替换 |
+|:---:|:---:|
+| ![护眼米色](docs/screenshots/reading-sepia.png) | ![代码编辑与查找替换](docs/screenshots/editor-search.png) |
+
+![设置抽屉中的九档主题色板](docs/screenshots/settings.png)
+
+## 主题
+
+九档主题加「跟随系统」，全部由 `html[data-theme]` 上的 CSS 变量驱动：正文、代码高亮、编辑器配色、Mermaid 图表与窗口底色一起切换，选择记录在设置里，下次启动保持。
+
+| 分组 | 主题 | 底色 | 主色 |
+| --- | --- | --- | --- |
+| 基础 | 浅色 | `#fbfaf7` | `#3a6ea5` |
+| 基础 | 深色 | `#15171b` | `#6a9ed4` |
+| 基础 | 护眼米色 | `#f8f3e8` | `#8a6331` |
+| GitHub | GitHub 浅色 | `#ffffff` | `#0969da` |
+| GitHub | GitHub 深色 | `#0d1117` | `#58a6ff` |
+| VS Code | VS Code 浅色 | `#ffffff` | `#005fb8` |
+| VS Code | VS Code 深色 | `#1e1e1e` | `#3794ff` |
+| 其他 | One Dark | `#282c34` | `#61afef` |
+
+色值与明暗标记集中在 [`src/shared/themes.ts`](src/shared/themes.ts)，主窗口底色、原生深浅色（影响滚动条与表单控件）、CodeMirror 的 `dark` 标记和 Mermaid 主题都从这一份定义取值。
 
 ## 支持的格式
 
@@ -73,12 +94,20 @@ Markdown Viewer 是一个本地优先的桌面阅读器：没有账号、没有�
 | `Ctrl+S` | 保存 |
 | `Ctrl+E` | 切换阅读 / 编辑 |
 | `Ctrl+F` | 查找（预览内或编辑器内） |
+| `Ctrl+A` | 全选（阅读视图选中当前文档，编辑视图选中全部源码） |
 | `Ctrl+B` | 显示 / 隐藏侧栏 |
 | `Ctrl+W` | 关闭当前标签页 |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | 切换标签页 |
 | `Ctrl+,` | 打开设置 |
 | `F5` | 重新加载当前文档 |
-| `Esc` | 关闭设置、查找或对话框 |
+| `Alt+F4` | 退出应用 |
+| `Esc` | 关闭设置、查找、图片弹层或对话框 |
+
+编辑模式内还有：`Ctrl+Z` / `Ctrl+Y` 撤销与重做，`Ctrl+X` / `Ctrl+C` / `Ctrl+V` 剪切复制粘贴，`Tab` / `Shift+Tab` 增减缩进，`Ctrl+Shift+[` / `Ctrl+Shift+]` 折叠与展开当前代码块，`Ctrl+Alt+[` / `Ctrl+Alt+]` 折叠与展开全部，`Ctrl+D` 选中下一个相同文本，`Ctrl+Shift+L` 选中全部相同文本，`Ctrl+Alt+G` 跳转到行。
+
+查找面板内用 `Enter` / `F3` 跳到下一个匹配，`Shift+Enter` / `Shift+F3` 回到上一个。图片弹层内用 `←` / `→` 切换同一文档内的图片，`+` / `-` 缩放，`0` 重置缩放与旋转。
+
+完整清单也会显示在「帮助 → 关于」对话框中。
 
 ## 安装与使用
 
