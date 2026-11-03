@@ -14,6 +14,7 @@ interface NodeProps {
   currentPath: string | null
   expanded: Set<string>
   isRoot?: boolean
+  isHidden: (path: string) => boolean
   onToggle: (path: string) => void
   onOpen: (path: string) => void
   onContext: (event: ReactMouseEvent, entry: FsEntry, isRoot: boolean) => void
@@ -25,6 +26,7 @@ function FolderNode({
   currentPath,
   expanded,
   isRoot = false,
+  isHidden,
   onToggle,
   onOpen,
   onContext
@@ -32,6 +34,7 @@ function FolderNode({
   const open = expanded.has(entry.path)
   const [children, setChildren] = useState<FsEntry[] | null>(null)
   const [loading, setLoading] = useState(false)
+  const visibleChildren = children?.filter((child) => !isHidden(child.path))
 
   useEffect(() => {
     if (!open || children !== null) return
@@ -79,7 +82,12 @@ function FolderNode({
               空
             </div>
           ) : null}
-          {children?.map((child) =>
+          {children && children.length > 0 && visibleChildren?.length === 0 ? (
+            <div className="tree-subtle" style={{ paddingLeft: 28 + depth * 12 }}>
+              已全部隐藏
+            </div>
+          ) : null}
+          {visibleChildren?.map((child) =>
             child.isDir ? (
               <FolderNode
                 key={child.path}
@@ -87,6 +95,7 @@ function FolderNode({
                 depth={depth + 1}
                 currentPath={currentPath}
                 expanded={expanded}
+                isHidden={isHidden}
                 onToggle={onToggle}
                 onOpen={onOpen}
                 onContext={onContext}
@@ -117,6 +126,7 @@ interface Props {
   roots: string[]
   currentPath: string | null
   expanded: Set<string>
+  isHidden: (path: string) => boolean
   onToggle: (path: string) => void
   onOpen: (path: string) => void
   onContext: (event: ReactMouseEvent, entry: FsEntry, isRoot: boolean) => void
@@ -126,6 +136,7 @@ export function FileTree({
   roots,
   currentPath,
   expanded,
+  isHidden,
   onToggle,
   onOpen,
   onContext
@@ -149,6 +160,7 @@ export function FileTree({
           currentPath={currentPath}
           expanded={expanded}
           isRoot
+          isHidden={isHidden}
           onToggle={onToggle}
           onOpen={onOpen}
           onContext={onContext}

@@ -2,14 +2,15 @@ import { app, nativeTheme } from 'electron'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type { ContentFont, Settings, ThemeMode, ThemePreference, WindowBounds } from '../shared/types'
+import { isTextFile } from '../shared/fileKinds'
+import { isDarkTheme, isThemePreference } from '../shared/themes'
 
 function systemTheme(): ThemeMode {
   return nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
 }
 
 function normalizeTheme(value: unknown): ThemePreference {
-  if (value === 'light' || value === 'dark' || value === 'sepia' || value === 'system') return value
-  return 'system'
+  return isThemePreference(value) ? value : 'system'
 }
 
 export function resolveThemeMode(preference: ThemePreference): ThemeMode {
@@ -19,7 +20,7 @@ export function resolveThemeMode(preference: ThemePreference): ThemeMode {
 
 export function applyNativeTheme(preference: ThemePreference): void {
   nativeTheme.themeSource =
-    preference === 'system' ? 'system' : preference === 'dark' ? 'dark' : 'light'
+    preference === 'system' ? 'system' : isDarkTheme(preference) ? 'dark' : 'light'
 }
 
 const CONTENT_FONTS = new Set<ContentFont>(['sans', 'serif', 'songti', 'kaiti', 'fangsong'])
@@ -32,6 +33,13 @@ function normalizeFontFamily(value: unknown): ContentFont {
 
 function normalizeBool(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback
+}
+
+function normalizeNewFileExt(value: unknown): string {
+  if (typeof value !== 'string') return 'md'
+  const ext = value.trim().replace(/^\./, '').toLowerCase()
+  if (!/^[a-z0-9]+$/.test(ext) || !isTextFile(`new.${ext}`)) return 'md'
+  return ext
 }
 
 let cache: Settings | null = null
@@ -47,6 +55,10 @@ export const DEFAULT_WIDTH = 860
 const MIN_SIDEBAR = 220
 const MAX_SIDEBAR = 520
 export const DEFAULT_SIDEBAR = 284
+
+const MIN_SETTINGS_DRAWER = 360
+const MAX_SETTINGS_DRAWER = 720
+export const DEFAULT_SETTINGS_DRAWER = 460
 
 const MIN_FONT = 12
 const MAX_FONT = 24
@@ -72,6 +84,11 @@ function normalizeWidth(value: unknown): number {
 function normalizeSidebar(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_SIDEBAR
   return Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, Math.round(value)))
+}
+
+function normalizeSettingsDrawer(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_SETTINGS_DRAWER
+  return Math.min(MAX_SETTINGS_DRAWER, Math.max(MIN_SETTINGS_DRAWER, Math.round(value)))
 }
 
 function normalizeFontSize(value: unknown): number {
@@ -129,6 +146,7 @@ function defaults(): Settings {
     themeMode: 'system',
     sidebarCollapsed: false,
     sidebarWidth: DEFAULT_SIDEBAR,
+    settingsWidth: DEFAULT_SETTINGS_DRAWER,
     contentWidth: DEFAULT_WIDTH,
     contentFontSize: DEFAULT_FONT,
     contentFontFamily: 'sans',
@@ -136,6 +154,7 @@ function defaults(): Settings {
     editorFontSize: DEFAULT_EDITOR_FONT,
     editorWordWrap: true,
     editorLineNumbers: true,
+    newFileExt: 'md',
     restoreSession: true,
     hideNoisyEntries: true,
     rememberWindowBounds: true,
@@ -145,6 +164,7 @@ function defaults(): Settings {
     openTabs: [],
     activeTab: null,
     expandedDirs: [],
+    hiddenTreePaths: [],
     recents: [],
     assocBackup: null
   }
@@ -169,16 +189,19 @@ export function getSettings(): Settings {
       editorFontSize: normalizeEditorFont(parsed.editorFontSize),
       editorWordWrap: normalizeBool(parsed.editorWordWrap, true),
       editorLineNumbers: normalizeBool(parsed.editorLineNumbers, true),
+      newFileExt: normalizeNewFileExt(parsed.newFileExt),
       restoreSession: normalizeBool(parsed.restoreSession, true),
       hideNoisyEntries: normalizeBool(parsed.hideNoisyEntries, true),
       rememberWindowBounds: normalizeBool(parsed.rememberWindowBounds, true),
       windowBounds: normalizeBounds(parsed.windowBounds),
       windowMaximized: normalizeBool(parsed.windowMaximized, false),
       sidebarWidth: normalizeSidebar(parsed.sidebarWidth),
+      settingsWidth: normalizeSettingsDrawer(parsed.settingsWidth),
       roots: roots.length ? roots : legacyRoot,
       openTabs,
       activeTab: normalizeActive(parsed.activeTab, openTabs),
       expandedDirs: normalizePathList(parsed.expandedDirs, 300),
+      hiddenTreePaths: normalizePathList(parsed.hiddenTreePaths, 200),
       recents: Array.isArray(parsed.recents) ? parsed.recents.slice(0, 12) : []
     }
   } catch {
@@ -203,6 +226,7 @@ export function patchSettings(patch: Partial<Settings>): Settings {
     next.editorWordWrap = normalizeBool(patch.editorWordWrap, true)
   if (patch.editorLineNumbers !== undefined)
     next.editorLineNumbers = normalizeBool(patch.editorLineNumbers, true)
+  if (patch.newFileExt !== undefined) next.newFileExt = normalizeNewFileExt(patch.newFileExt)
   if (patch.restoreSession !== undefined)
     next.restoreSession = normalizeBool(patch.restoreSession, true)
   if (patch.hideNoisyEntries !== undefined)
@@ -213,9 +237,13 @@ export function patchSettings(patch: Partial<Settings>): Settings {
   if (patch.windowMaximized !== undefined)
     next.windowMaximized = normalizeBool(patch.windowMaximized, false)
   if (patch.sidebarWidth !== undefined) next.sidebarWidth = normalizeSidebar(patch.sidebarWidth)
+  if (patch.settingsWidth !== undefined)
+    next.settingsWidth = normalizeSettingsDrawer(patch.settingsWidth)
   if (patch.roots !== undefined) next.roots = normalizePathList(patch.roots, 12)
   if (patch.openTabs !== undefined) next.openTabs = normalizePathList(patch.openTabs, 30)
   if (patch.expandedDirs !== undefined) next.expandedDirs = normalizePathList(patch.expandedDirs, 300)
+  if (patch.hiddenTreePaths !== undefined)
+    next.hiddenTreePaths = normalizePathList(patch.hiddenTreePaths, 200)
   if (patch.activeTab !== undefined) next.activeTab = normalizeActive(patch.activeTab, next.openTabs)
   cache = next
   try {
@@ -236,6 +264,7 @@ export function resetPreferences(): Settings {
     themeMode: base.themeMode,
     sidebarCollapsed: base.sidebarCollapsed,
     sidebarWidth: base.sidebarWidth,
+    settingsWidth: base.settingsWidth,
     contentWidth: base.contentWidth,
     contentFontSize: base.contentFontSize,
     contentFontFamily: base.contentFontFamily,
@@ -243,6 +272,7 @@ export function resetPreferences(): Settings {
     editorFontSize: base.editorFontSize,
     editorWordWrap: base.editorWordWrap,
     editorLineNumbers: base.editorLineNumbers,
+    newFileExt: base.newFileExt,
     restoreSession: base.restoreSession,
     hideNoisyEntries: base.hideNoisyEntries,
     rememberWindowBounds: base.rememberWindowBounds

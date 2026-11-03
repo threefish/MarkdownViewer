@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ThemeMode } from '../../../shared/types'
-
-const BACKGROUND: Record<ThemeMode, string> = {
-  light: '#ffffff',
-  dark: '#1b1f25',
-  sepia: '#f8f3e8'
-}
+import { isDarkTheme, themeBackground } from '../../../shared/themes'
 
 let counter = 0
 let loader: Promise<(typeof import('mermaid'))['default']> | null = null
@@ -66,10 +61,10 @@ export function MermaidBlock({ code, theme }: Props): React.JSX.Element {
         mermaid.initialize({
           startOnLoad: false,
           securityLevel: 'strict',
-          theme: theme === 'dark' ? 'dark' : 'default',
+          theme: isDarkTheme(theme) ? 'dark' : 'default',
           fontFamily: 'inherit',
           themeVariables: {
-            background: BACKGROUND[theme]
+            background: themeBackground(theme)
           }
         })
         const result = await mermaid.render(id, code)

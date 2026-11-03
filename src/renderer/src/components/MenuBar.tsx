@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react'
 import type { RecentDoc, ThemePreference } from '../../../shared/types'
+import { THEME_GROUPS } from '../../../shared/themes'
 
 export type MenuAction =
   | 'open-file'
@@ -75,16 +76,19 @@ function buildGroups(state: MenuState): Group[] {
       action: 'set-theme',
       payload: 'system',
       checked: state.themeMode === 'system'
-    },
-    { label: '浅色', action: 'set-theme', payload: 'light', checked: state.themeMode === 'light' },
-    { label: '深色', action: 'set-theme', payload: 'dark', checked: state.themeMode === 'dark' },
-    {
-      label: '护眼米色',
-      action: 'set-theme',
-      payload: 'sepia',
-      checked: state.themeMode === 'sepia'
     }
   ]
+  for (const group of THEME_GROUPS) {
+    themeItems.push({ separator: true })
+    for (const theme of group.themes) {
+      themeItems.push({
+        label: theme.label,
+        action: 'set-theme',
+        payload: theme.value,
+        checked: state.themeMode === theme.value
+      })
+    }
+  }
 
   return [
     {

@@ -16,12 +16,15 @@ interface Props {
   width: number
   treeVersion: number
   expanded: Set<string>
+  hiddenPaths: string[]
   scrollRef: React.RefObject<HTMLDivElement | null>
   onToggleDir: (path: string) => void
   onOpen: (path: string) => void
   onCreateIn: (dir: string, kind: 'file' | 'dir') => void
   onReveal: (path: string) => void
   onTrash: (entry: FsEntry) => void
+  onHideEntry: (entry: FsEntry) => void
+  onPickHidden: (dir: string) => void
   onRemoveRoot: (root: string) => void
   onSettings: () => void
   onCollapse: () => void
@@ -41,12 +44,15 @@ export function Sidebar({
   width,
   treeVersion,
   expanded,
+  hiddenPaths,
   scrollRef,
   onToggleDir,
   onOpen,
   onCreateIn,
   onReveal,
   onTrash,
+  onHideEntry,
+  onPickHidden,
   onRemoveRoot,
   onSettings,
   onCollapse,
@@ -102,11 +108,14 @@ export function Sidebar({
               currentPath={currentPath}
               version={treeVersion}
               expanded={expanded}
+              hiddenPaths={hiddenPaths}
               onToggleDir={onToggleDir}
               onOpen={onOpen}
               onCreateIn={onCreateIn}
               onReveal={onReveal}
               onTrash={onTrash}
+              onHideEntry={onHideEntry}
+              onPickHidden={onPickHidden}
               onRemoveRoot={onRemoveRoot}
             />
           ) : (

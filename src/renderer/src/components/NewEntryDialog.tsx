@@ -4,6 +4,7 @@ interface Props {
   open: boolean
   kind: 'file' | 'dir'
   dir: string | null
+  defaultExt: string
   busy: boolean
   error: string | null
   onSubmit: (name: string) => void
@@ -14,6 +15,7 @@ export function NewEntryDialog({
   open,
   kind,
   dir,
+  defaultExt,
   busy,
   error,
   onSubmit,
@@ -24,7 +26,7 @@ export function NewEntryDialog({
 
   useEffect(() => {
     if (!open) return
-    const initial = kind === 'file' ? '未命名.md' : '新建文件夹'
+    const initial = kind === 'file' ? `未命名.${defaultExt}` : '新建文件夹'
     setName(initial)
     const timer = window.setTimeout(() => {
       const input = inputRef.current
@@ -34,7 +36,7 @@ export function NewEntryDialog({
       input.setSelectionRange(0, kind === 'file' && dot > 0 ? dot : initial.length)
     }, 30)
     return () => window.clearTimeout(timer)
-  }, [open, kind])
+  }, [open, kind, defaultExt])
 
   useEffect(() => {
     if (!open) return

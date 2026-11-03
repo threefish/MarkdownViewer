@@ -10,17 +10,21 @@ import {
   type JSX
 } from 'react'
 import type { AppInfo, ContentFont, DocPayload, FsEntry, Settings, ThemeMode } from '../../shared/types'
+import { isThemePreference } from '../../shared/themes'
 import { isMarkdownFile } from '../../shared/fileKinds'
+import { AboutDialog } from './components/AboutDialog'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import type { EditorHandle } from './components/Editor'
 import { EmptyState } from './components/EmptyState'
+import { HiddenRestoreDialog } from './components/HiddenRestoreDialog'
 import { CloseIcon, EyeIcon, PencilIcon, SearchIcon } from './components/Icons'
-import { MenuBar, type MenuAction, type MenuState } from './components/MenuBar'
+import type { MenuAction, MenuState } from './components/MenuBar'
 import { NewEntryDialog } from './components/NewEntryDialog'
 import { SearchBar } from './components/SearchBar'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar } from './components/Sidebar'
 import { TabBar, type TabInfo } from './components/TabBar'
+import { TitleBar } from './components/TitleBar'
 import { WidthControl } from './components/WidthControl'
 import { MarkdownDocument } from './lib/markdown'
 import { languageKeyForPath } from './lib/codeLanguage'
@@ -36,6 +40,7 @@ const INITIAL_SETTINGS: Settings = {
   themeMode: 'system',
   sidebarCollapsed: false,
   sidebarWidth: 284,
+  settingsWidth: 460,
   contentWidth: 860,
   contentFontSize: 16,
   contentFontFamily: 'sans',
@@ -43,6 +48,7 @@ const INITIAL_SETTINGS: Settings = {
   editorFontSize: 13.5,
   editorWordWrap: true,
   editorLineNumbers: true,
+  newFileExt: 'md',
   restoreSession: true,
   hideNoisyEntries: true,
   rememberWindowBounds: true,
@@ -52,6 +58,7 @@ const INITIAL_SETTINGS: Settings = {
   openTabs: [],
   activeTab: null,
   expandedDirs: [],
+  hiddenTreePaths: [],
   recents: [],
   assocBackup: null
 }
@@ -157,6 +164,7 @@ export default function App(): JSX.Element {
   const [collapsed, setCollapsed] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [hiddenPickerDir, setHiddenPickerDir] = useState<string | null>(null)
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [pendingHash, setPendingHash] = useState<string | null>(null)
@@ -232,7 +240,10 @@ export default function App(): JSX.Element {
   useEffect(() => {
     if (settings.themeMode !== 'system') return
     const query = window.matchMedia('(prefers-color-scheme: dark)')
-    const apply = (): void => setTheme(query.matches ? 'dark' : 'light')
+    const apply = (): void => {
+      if (settingsRef.current.themeMode !== 'system') return
+      setTheme(query.matches ? 'dark' : 'light')
+    }
     apply()
     query.addEventListener('change', apply)
     return () => query.removeEventListener('change', apply)
@@ -652,7 +663,8 @@ export default function App(): JSX.Element {
     if (patch.contentWidth !== undefined) setContentWidth(bundle.settings.contentWidth)
     if (patch.sidebarWidth !== undefined) setSidebarWidth(bundle.settings.sidebarWidth)
     if (patch.sidebarCollapsed !== undefined) setCollapsed(bundle.settings.sidebarCollapsed)
-    if (patch.hideNoisyEntries !== undefined) setTreeVersion((value) => value + 1)
+    if (patch.hideNoisyEntries !== undefined || patch.hiddenTreePaths !== undefined)
+      setTreeVersion((value) => value + 1)
   }, [])
 
   const resetSettings = useCallback(async () => {
@@ -796,6 +808,45 @@ export default function App(): JSX.Element {
     setTrashTarget(entry)
   }, [])
 
+  const hideTreeEntry = useCallback(
+    (entry: FsEntry) => {
+      const hidden = settingsRef.current.hiddenTreePaths
+      if (hidden.some((path) => samePath(path, entry.path))) return
+      void updateSettings({ hiddenTreePaths: [...hidden, entry.path] }).then(() => {
+        setNotice(`已隐藏「${entry.name}」，可在 设置 → 文件树 中恢复`)
+      })
+    },
+    [updateSettings]
+  )
+
+  const openHiddenPicker = useCallback((dir: string) => {
+    setHiddenPickerDir(dir)
+  }, [])
+
+  const restoreHiddenPaths = useCallback(
+    (paths: string[]) => {
+      if (!paths.length) return
+      const hidden = settingsRef.current.hiddenTreePaths
+      const remaining = hidden.filter(
+        (path) => !paths.some((selected) => samePath(selected, path))
+      )
+      const restored = hidden.length - remaining.length
+      setHiddenPickerDir(null)
+      if (!restored) return
+      void updateSettings({ hiddenTreePaths: remaining }).then(() => {
+        setNotice(`已显示 ${restored} 个隐藏项目`)
+      })
+    },
+    [updateSettings]
+  )
+
+  const hiddenPickerPaths = useMemo(() => {
+    if (!hiddenPickerDir) return []
+    return settings.hiddenTreePaths.filter(
+      (path) => isWithin(path, hiddenPickerDir) && !samePath(path, hiddenPickerDir)
+    )
+  }, [hiddenPickerDir, settings.hiddenTreePaths])
+
   const confirmTrash = useCallback(async () => {
     const target = trashTarget
     if (!target) return
@@ -842,6 +893,25 @@ export default function App(): JSX.Element {
   const handleScroll = useCallback(() => {
     const id = activeIdRef.current
     if (id) scrollMap.current.set(id, ratioOf(readerRef.current))
+  }, [])
+
+  const selectAllContent = useCallback(() => {
+    const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
+    if (!tab) return
+    const editorShown =
+      !isMarkdownFile(tab.path) || tab.editing || docTier(tab.content.length) !== 'normal'
+    if (editorShown) {
+      editorHandle.current?.selectAll()
+      return
+    }
+    const article = document.querySelector('.markdown-body')
+    if (!article) return
+    const range = document.createRange()
+    range.selectNodeContents(article)
+    const selection = window.getSelection()
+    if (!selection) return
+    selection.removeAllRanges()
+    selection.addRange(range)
   }, [])
 
   const handleAction = useCallback(
@@ -893,7 +963,7 @@ export default function App(): JSX.Element {
           window.mdv.editAction('paste')
           break
         case 'select-all':
-          window.mdv.editAction('select-all')
+          selectAllContent()
           break
         case 'find':
           openFind()
@@ -902,12 +972,7 @@ export default function App(): JSX.Element {
           toggleSidebar()
           break
         case 'set-theme':
-          if (
-            payload === 'system' ||
-            payload === 'light' ||
-            payload === 'dark' ||
-            payload === 'sepia'
-          ) {
+          if (isThemePreference(payload)) {
             void updateSettings({ themeMode: payload })
           }
           break
@@ -936,7 +1001,8 @@ export default function App(): JSX.Element {
       openFind,
       toggleSidebar,
       updateSettings,
-      reloadActive
+      reloadActive,
+      selectAllContent
     ]
   )
 
@@ -1080,6 +1146,11 @@ export default function App(): JSX.Element {
       } else if (key === 'e') {
         event.preventDefault()
         commandRef.current('toggle-edit')
+      } else if (key === 'a') {
+        const target = event.target as HTMLElement | null
+        if (target?.closest?.('input, textarea, [contenteditable="true"]')) return
+        event.preventDefault()
+        commandRef.current('select-all')
       } else if (key === 'f') {
         event.preventDefault()
         commandRef.current('find')
@@ -1292,7 +1363,12 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app">
-      <MenuBar state={menuState} onAction={handleAction} />
+      <TitleBar
+        state={menuState}
+        onAction={handleAction}
+        sidebarCollapsed={collapsed}
+        onToggleSidebar={toggleSidebar}
+      />
 
       <div className="app-body">
         <Sidebar
@@ -1305,12 +1381,15 @@ export default function App(): JSX.Element {
           width={sidebarWidth}
           treeVersion={treeVersion}
           expanded={expandedDirs}
+          hiddenPaths={settings.hiddenTreePaths}
           scrollRef={readerRef}
           onToggleDir={toggleDir}
           onOpen={(path) => void openDoc(path)}
           onCreateIn={handleTreeCreate}
           onReveal={handleReveal}
           onTrash={requestTrash}
+          onHideEntry={hideTreeEntry}
+          onPickHidden={openHiddenPicker}
           onRemoveRoot={removeRoot}
           onSettings={() => setSettingsOpen((open) => !open)}
           onCollapse={toggleSidebar}
@@ -1324,6 +1403,7 @@ export default function App(): JSX.Element {
             onActivate={(path) => activateTab(path)}
             onClose={requestCloseTab}
             onClosePaths={requestClosePaths}
+            onNew={() => startCreate('file')}
           />
 
           {notice || active?.banner || active?.externalChanged ? (
@@ -1567,23 +1647,29 @@ export default function App(): JSX.Element {
         onCancel={() => setHugeEdit(null)}
       />
 
+      <HiddenRestoreDialog
+        open={hiddenPickerDir !== null}
+        dir={hiddenPickerDir}
+        paths={hiddenPickerPaths}
+        onConfirm={restoreHiddenPaths}
+        onCancel={() => setHiddenPickerDir(null)}
+      />
+
       <NewEntryDialog
         open={createKind !== null}
         kind={createKind ?? 'file'}
         dir={createKind ? createTargetDir() : null}
+        defaultExt={settings.newFileExt}
         busy={createBusy}
         error={createError}
         onSubmit={(name) => void submitCreate(name)}
         onCancel={cancelCreate}
       />
 
-      <ConfirmDialog
+      <AboutDialog
         open={aboutOpen}
-        title="关于 Markdown Viewer"
-        message={`版本 ${appInfo?.version ?? '—'}`}
-        detail="本地 Markdown 阅读与编辑器，支持 GFM、KaTeX 公式与 Mermaid 图表，也可查看和编辑常见文本与代码文件"
-        actions={[{ label: '好', tone: 'primary', onClick: () => setAboutOpen(false) }]}
-        onCancel={() => setAboutOpen(false)}
+        version={appInfo?.version ?? ''}
+        onClose={() => setAboutOpen(false)}
       />
 
       <SettingsDialog

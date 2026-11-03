@@ -1,7 +1,8 @@
 import { BrowserWindow, Menu, Tray, app, nativeImage, screen, shell } from 'electron'
 import path from 'node:path'
-import trayIconPath from '../../build/icon.png?asset'
+import trayIconPath from '../../build/tray.png?asset'
 import type { ThemeMode, WindowBounds } from '../shared/types'
+import { themeBackground } from '../shared/themes'
 import { getSettings, patchSettings } from './settings'
 
 let mainWindow: BrowserWindow | null = null
@@ -65,12 +66,6 @@ export function getMainWindow(): BrowserWindow | null {
   return mainWindow
 }
 
-export function windowBackground(theme: ThemeMode): string {
-  if (theme === 'dark') return '#15171b'
-  if (theme === 'sepia') return '#f8f3e8'
-  return '#fbfaf7'
-}
-
 export function closeMainWindow(): void {
   allowClose = true
   mainWindow?.close()
@@ -125,8 +120,9 @@ export function createMainWindow(theme: ThemeMode, state: WindowState): BrowserW
     ...(restored ? { x: restored.x, y: restored.y } : {}),
     minWidth: 760,
     minHeight: 480,
+    frame: false,
     show: false,
-    backgroundColor: windowBackground(theme),
+    backgroundColor: themeBackground(theme),
     title: 'Markdown Viewer',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -161,8 +157,18 @@ export function createMainWindow(theme: ThemeMode, state: WindowState): BrowserW
   })
   win.on('resize', () => scheduleWindowSave(win))
   win.on('move', () => scheduleWindowSave(win))
-  win.on('maximize', () => scheduleWindowSave(win))
-  win.on('unmaximize', () => scheduleWindowSave(win))
+  win.on('maximize', () => {
+    scheduleWindowSave(win)
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send('window:maximized-changed', true)
+    }
+  })
+  win.on('unmaximize', () => {
+    scheduleWindowSave(win)
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send('window:maximized-changed', false)
+    }
+  })
   win.on('closed', () => {
     cancelPendingSave()
     if (mainWindow === win) mainWindow = null

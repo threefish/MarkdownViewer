@@ -1,4 +1,12 @@
-export type ThemeMode = 'light' | 'dark' | 'sepia'
+export type ThemeMode =
+  | 'light'
+  | 'dark'
+  | 'sepia'
+  | 'github-light'
+  | 'github-dark'
+  | 'vscode-light'
+  | 'vscode-dark'
+  | 'one-dark'
 export type ThemePreference = 'system' | ThemeMode
 export type ContentFont = 'sans' | 'serif' | 'songti' | 'kaiti' | 'fangsong'
 
@@ -34,6 +42,7 @@ export interface Settings {
   themeMode: ThemePreference
   sidebarCollapsed: boolean
   sidebarWidth: number
+  settingsWidth: number
   contentWidth: number
   contentFontSize: number
   contentFontFamily: ContentFont
@@ -41,6 +50,7 @@ export interface Settings {
   editorFontSize: number
   editorWordWrap: boolean
   editorLineNumbers: boolean
+  newFileExt: string
   restoreSession: boolean
   hideNoisyEntries: boolean
   rememberWindowBounds: boolean
@@ -50,6 +60,7 @@ export interface Settings {
   openTabs: string[]
   activeTab: string | null
   expandedDirs: string[]
+  hiddenTreePaths: string[]
   recents: RecentDoc[]
   assocBackup: { md: string | null; markdown: string | null } | null
 }
@@ -144,8 +155,13 @@ export interface MdvApi {
   openExternal(url: string): Promise<void>
   openPath(path: string): Promise<void>
   appInfo(): Promise<AppInfo>
-  editAction(action: 'cut' | 'copy' | 'paste' | 'select-all'): void
+  editAction(action: 'cut' | 'copy' | 'paste'): void
   confirmClose(): void
+  minimizeWindow(): void
+  toggleMaximizeWindow(): void
+  closeWindow(): void
+  isWindowMaximized(): Promise<boolean>
+  onWindowMaximized(cb: (maximized: boolean) => void): () => void
   onDocOpen(cb: (path: string) => void): () => void
   onDocChanged(cb: (payload: { path: string; mtimeMs: number } | null) => void): () => void
   onDocDeleted(cb: (payload: { path: string }) => void): () => void

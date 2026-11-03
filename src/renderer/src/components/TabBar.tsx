@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from 'react'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
-import { CloseIcon } from './Icons'
+import { CloseIcon, PlusIcon } from './Icons'
 
 export interface TabInfo {
   path: string
@@ -14,6 +14,7 @@ interface Props {
   onActivate: (path: string) => void
   onClose: (path: string) => void
   onClosePaths: (paths: string[]) => void
+  onNew: () => void
 }
 
 interface MenuState {
@@ -27,7 +28,8 @@ export function TabBar({
   activePath,
   onActivate,
   onClose,
-  onClosePaths
+  onClosePaths,
+  onNew
 }: Props): JSX.Element | null {
   const barRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef(new Map<string, HTMLDivElement>())
@@ -98,45 +100,63 @@ export function TabBar({
 
   return (
     <>
-      <div className="tabbar" role="tablist" ref={barRef}>
-        {tabs.map((tab) => (
-          <div
-            key={tab.path}
-            ref={(node) => {
-              if (node) itemRefs.current.set(tab.path, node)
-              else itemRefs.current.delete(tab.path)
-            }}
-            className={`tab${tab.path === activePath ? ' active' : ''}`}
-            title={tab.path}
-            onContextMenu={(event) => openMenu(event, tab.path)}
-          >
-            <button
-              type="button"
-              className="tab-main"
-              role="tab"
-              aria-selected={tab.path === activePath}
-              onClick={() => onActivate(tab.path)}
-              onAuxClick={(event) => {
-                if (event.button === 1) {
-                  event.preventDefault()
-                  onClose(tab.path)
-                }
+      <div className="tabbar">
+        <div
+          className="tabbar-tabs"
+          role="tablist"
+          ref={barRef}
+          onDoubleClick={(event) => {
+            if (event.target === event.currentTarget) onNew()
+          }}
+        >
+          {tabs.map((tab) => (
+            <div
+              key={tab.path}
+              ref={(node) => {
+                if (node) itemRefs.current.set(tab.path, node)
+                else itemRefs.current.delete(tab.path)
               }}
+              className={`tab${tab.path === activePath ? ' active' : ''}`}
+              title={tab.path}
+              onContextMenu={(event) => openMenu(event, tab.path)}
             >
-              <span className="tab-label">{tab.name}</span>
-              {tab.dirty ? <span className="tab-dirty" aria-label="未保存" /> : null}
-            </button>
-            <button
-              type="button"
-              className="tab-close"
-              title="关闭 (Ctrl+W)"
-              aria-label={`关闭 ${tab.name}`}
-              onClick={() => onClose(tab.path)}
-            >
-              <CloseIcon />
-            </button>
-          </div>
-        ))}
+              <button
+                type="button"
+                className="tab-main"
+                role="tab"
+                aria-selected={tab.path === activePath}
+                onClick={() => onActivate(tab.path)}
+                onAuxClick={(event) => {
+                  if (event.button === 1) {
+                    event.preventDefault()
+                    onClose(tab.path)
+                  }
+                }}
+              >
+                <span className="tab-label">{tab.name}</span>
+                {tab.dirty ? <span className="tab-dirty" aria-label="未保存" /> : null}
+              </button>
+              <button
+                type="button"
+                className="tab-close"
+                title="关闭 (Ctrl+W)"
+                aria-label={`关闭 ${tab.name}`}
+                onClick={() => onClose(tab.path)}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="tab-new"
+          title="新建文件"
+          aria-label="新建文件"
+          onClick={onNew}
+        >
+          <PlusIcon />
+        </button>
       </div>
       {menu && menuIndex >= 0 ? (
         <ContextMenu

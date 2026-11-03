@@ -14,4 +14,4 @@ win:
       arch:
         - x64
   executableName: md-viewer
-  icon: build/icon.png
+  icon: build/icon.ico

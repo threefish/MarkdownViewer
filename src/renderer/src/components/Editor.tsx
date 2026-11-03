@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { Compartment, EditorState, type Extension } from '@codemirror/state'
+
 import {
   EditorView,
+  ViewPlugin,
   drawSelection,
   highlightActiveLine,
   highlightActiveLineGutter,
@@ -11,10 +13,15 @@ import {
 } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from '@codemirror/commands'
 import {
+  SearchQuery,
+  closeSearchPanel,
+  getSearchQuery,
   highlightSelectionMatches,
   openSearchPanel,
   search,
-  searchKeymap
+  searchKeymap,
+  searchPanelOpen,
+  setSearchQuery
 } from '@codemirror/search'
 import {
   HighlightStyle,
@@ -26,13 +33,135 @@ import {
 import { markdown } from '@codemirror/lang-markdown'
 import { tags } from '@lezer/highlight'
 import type { ThemeMode } from '../../../shared/types'
+import { isDarkTheme } from '../../../shared/themes'
 import { loadLanguage } from '../lib/codeLanguage'
+
+const SEARCH_PHRASES = {
+  Find: '查找',
+  Replace: '替换为',
+  next: '下一个',
+  previous: '上一个',
+  all: '全选匹配',
+  'match case': '区分大小写',
+  regexp: '正则',
+  'by word': '全字匹配',
+  replace: '替换',
+  'replace all': '全部替换',
+  close: '关闭',
+  'Go to line': '跳转到行',
+  go: '跳转',
+  'current match': '当前匹配',
+  'on line': '位于第',
+  'replaced match on line $': '已替换第 $ 行的匹配',
+  'replaced $ matches': '已替换 $ 处匹配',
+  'Control character': '控制字符'
+}
+
+const replaceToggleExtension = ViewPlugin.fromClass(
+  class {
+    private observer: MutationObserver
+    private expanded = false
+    private rebuildQueued = false
+
+    constructor(private view: EditorView) {
+      this.observer = new MutationObserver(() => this.sync())
+      this.observer.observe(view.dom, { childList: true, subtree: true })
+    }
+
+    update(update: { state: EditorState; startState: EditorState }): void {
+      if (update.state.readOnly !== update.startState.readOnly) this.sync()
+    }
+
+    destroy(): void {
+      this.observer.disconnect()
+    }
+
+    private sync(): void {
+      const panel = this.view.dom.querySelector<HTMLElement>('.cm-panel.cm-search')
+      if (!panel) return
+      const existing = panel.querySelector<HTMLButtonElement>('.mdv-replace-toggle')
+      if (this.view.state.readOnly) {
+        existing?.remove()
+        return
+      }
+      if (!panel.querySelector('input[name=replace]')) {
+        this.scheduleRebuild()
+        return
+      }
+      let button = existing
+      if (!button) {
+        button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'cm-button mdv-replace-toggle'
+        button.textContent = '替换'
+        button.addEventListener('mousedown', (event) => event.preventDefault())
+        button.addEventListener('click', () => {
+          this.expanded = !this.expanded
+          this.apply(panel, button!)
+        })
+        panel.insertBefore(button, panel.querySelector('label'))
+      }
+      this.apply(panel, button)
+    }
+
+    private apply(panel: HTMLElement, button: HTMLButtonElement): void {
+      panel.classList.toggle('mdv-replace-open', this.expanded)
+      button.setAttribute('aria-expanded', String(this.expanded))
+      const title = this.expanded ? '隐藏替换栏' : '显示替换栏'
+      button.title = title
+      button.setAttribute('aria-label', title)
+    }
+
+    private scheduleRebuild(): void {
+      if (this.rebuildQueued) return
+      this.rebuildQueued = true
+      queueMicrotask(() => {
+        this.rebuildQueued = false
+        if (this.view.state.readOnly || !searchPanelOpen(this.view.state)) return
+        const panel = this.view.dom.querySelector<HTMLElement>('.cm-panel.cm-search')
+        if (!panel || panel.querySelector('input[name=replace]')) return
+        const searchInput = panel.querySelector<HTMLInputElement>('input[name=search]')
+        const replaceInput = panel.querySelector<HTMLInputElement>('input[name=replace]')
+        const current = getSearchQuery(this.view.state)
+        const search = searchInput?.value ?? current.search
+        const replace = replaceInput?.value ?? current.replace
+        const focused = this.view.root.activeElement === searchInput
+        const selectionStart = searchInput?.selectionStart ?? null
+        const selectionEnd = searchInput?.selectionEnd ?? null
+        closeSearchPanel(this.view)
+        openSearchPanel(this.view)
+        if (search) {
+          this.view.dispatch({
+            effects: setSearchQuery.of(
+              new SearchQuery({
+                search,
+                replace,
+                caseSensitive: current.caseSensitive,
+                literal: current.literal,
+                regexp: current.regexp,
+                wholeWord: current.wholeWord
+              })
+            )
+          })
+        }
+        if (focused) {
+          const next = this.view.dom.querySelector<HTMLInputElement>('.cm-search input[name=search]')
+          if (next) {
+            next.focus()
+            next.setSelectionRange(selectionStart ?? next.value.length, selectionEnd ?? next.value.length)
+          }
+        }
+      })
+    }
+  }
+)
 
 export interface EditorHandle {
   focus(): void
   openSearch(): void
   undo(): void
   redo(): void
+  selectAll(): void
 }
 
 interface Props {
@@ -63,25 +192,25 @@ function editorTheme(theme: ThemeMode): Extension {
           overflow: 'auto'
         },
         '.cm-content': {
-          padding: '28px 32px 150px',
+          padding: '0 32px 150px 0',
           caretColor: 'var(--accent)'
         },
         '.cm-gutters': {
           backgroundColor: 'transparent',
           color: 'var(--text-3)',
           border: 'none',
-          paddingLeft: '4px'
+          paddingLeft: '2px'
         },
         '.cm-lineNumbers .cm-gutterElement': {
-          padding: '0 10px 0 14px',
-          minWidth: '46px',
+          padding: '0 8px 0 10px',
+          minWidth: '38px',
           textAlign: 'right'
         },
         '.cm-foldGutter .cm-gutterElement': {
-          padding: '0 6px',
+          padding: '0 3px',
           cursor: 'pointer'
         },
-        '.cm-foldGutter span': { color: 'var(--text-3)', padding: '0 1px' },
+        '.cm-foldGutter span': { color: 'var(--text-3)' },
         '.cm-foldGutter .cm-gutterElement:hover span': { color: 'var(--text)' },
         '.cm-activeLineGutter': {
           backgroundColor: 'var(--hover)',
@@ -109,24 +238,179 @@ function editorTheme(theme: ThemeMode): Extension {
           borderColor: 'var(--border)'
         },
         '.cm-panels-top': { borderBottom: '1px solid var(--border)' },
-        '.cm-panel.cm-search': { padding: '6px 10px', fontSize: '12.5px' },
-        '.cm-textfield': {
+        '.cm-panel.cm-search': {
+          position: 'relative',
+          display: 'block',
+          padding: '8px 42px 8px 10px',
+          fontSize: '12.5px',
+          lineHeight: '1'
+        },
+        '.cm-search > input, .cm-search > button, .cm-search > label': {
+          verticalAlign: 'middle',
+          margin: '3px 6px 3px 0'
+        },
+        '.cm-search br': { display: 'none' },
+        '.cm-search input[name=replace], .cm-search button[name=replace], .cm-search button[name=replaceAll]': {
+          display: 'none'
+        },
+        '.cm-search.mdv-replace-open br': {
+          display: 'block',
+          height: '0',
+          lineHeight: '0',
+          margin: '0'
+        },
+        '.cm-search.mdv-replace-open input[name=replace]': { display: 'inline-block' },
+        '.cm-search.mdv-replace-open button[name=replace], .cm-search.mdv-replace-open button[name=replaceAll]': {
+          display: 'inline-block'
+        },
+        '&[data-readonly="true"] .cm-panel.cm-search::after': {
+          content: '"只读模式不可替换，按 Ctrl+E 进入编辑"',
+          display: 'block',
+          marginTop: '6px',
+          color: 'var(--text-3)',
+          fontSize: '11.5px'
+        },
+        '.cm-search .cm-textfield': {
+          width: '190px',
+          height: '28px',
+          padding: '0 10px',
+          fontSize: '12.5px',
+          color: 'var(--text)',
           backgroundColor: 'var(--bg)',
           border: '1px solid var(--border-strong)',
-          borderRadius: '5px',
-          color: 'var(--text)',
-          padding: '2px 6px'
+          borderRadius: '7px',
+          outline: 'none'
         },
-        '.cm-button': {
+        '.cm-search input[name=search]': {
+          paddingLeft: '30px',
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239197a1' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='M16 16l4.5 4.5'/%3E%3C/svg%3E\")",
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: '9px center',
+          backgroundSize: '13px'
+        },
+        '.cm-search .cm-textfield::placeholder': { color: 'var(--text-3)' },
+        '.cm-search .cm-textfield:focus': {
+          borderColor: 'var(--accent)',
+          boxShadow: '0 0 0 3px var(--accent-weak)'
+        },
+        '.cm-search .cm-button': {
+          height: '28px',
+          padding: '0 10px',
           backgroundImage: 'none',
           backgroundColor: 'var(--bg-sidebar)',
           border: '1px solid var(--border)',
-          borderRadius: '5px',
-          color: 'var(--text-2)'
+          borderRadius: '7px',
+          color: 'var(--text-2)',
+          fontSize: '12px',
+          lineHeight: '1',
+          cursor: 'pointer',
+          transition: 'background-color .15s, color .15s, border-color .15s'
+        },
+        '.cm-search .cm-button:hover': {
+          backgroundColor: 'var(--hover)',
+          color: 'var(--text)',
+          borderColor: 'var(--border-strong)'
+        },
+        '.cm-search .mdv-replace-toggle': {
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '5px'
+        },
+        '.cm-search .mdv-replace-toggle::after': {
+          content: '"▸"',
+          fontSize: '9px',
+          lineHeight: '1',
+          opacity: '0.65'
+        },
+        '.cm-search .mdv-replace-toggle[aria-expanded="true"]': {
+          backgroundColor: 'var(--accent-weak)',
+          borderColor: 'color-mix(in srgb, var(--accent) 45%, transparent)',
+          color: 'var(--accent)'
+        },
+        '.cm-search .mdv-replace-toggle[aria-expanded="true"]:hover': {
+          backgroundColor: 'color-mix(in srgb, var(--accent) 18%, transparent)',
+          borderColor: 'color-mix(in srgb, var(--accent) 55%, transparent)',
+          color: 'var(--accent)'
+        },
+        '.cm-search .mdv-replace-toggle[aria-expanded="true"]::after': {
+          content: '"▾"'
+        },
+        '.cm-search label': {
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '7px',
+          height: '28px',
+          padding: '0 10px 0 8px',
+          border: '1px solid var(--border)',
+          borderRadius: '999px',
+          color: 'var(--text-2)',
+          fontSize: '12px',
+          lineHeight: '14px',
+          whiteSpace: 'nowrap',
+          cursor: 'pointer',
+          userSelect: 'none'
+        },
+        '.cm-search label:hover': { backgroundColor: 'var(--hover)', color: 'var(--text)' },
+        '.cm-search label:has(input:checked)': {
+          backgroundColor: 'var(--accent-weak)',
+          borderColor: 'color-mix(in srgb, var(--accent) 45%, transparent)',
+          color: 'var(--accent)'
+        },
+        '.cm-search label:has(input:focus-visible)': {
+          boxShadow: '0 0 0 2px var(--accent-weak)'
+        },
+        '.cm-search label input[type=checkbox]': {
+          appearance: 'none',
+          flex: '0 0 auto',
+          display: 'block',
+          width: '14px',
+          height: '14px',
+          margin: '0 !important',
+          padding: '0',
+          backgroundColor: 'var(--bg)',
+          border: '1px solid var(--border-strong)',
+          borderRadius: '4px',
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          backgroundSize: '10px 10px',
+          cursor: 'pointer'
+        },
+        '.cm-search label input[type=checkbox]:checked': {
+          backgroundColor: 'var(--accent)',
+          borderColor: 'var(--accent)',
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.4 8.3l3.1 3.1 6.2-6.8' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")"
+        },
+        '.cm-search button[name=close]': {
+          position: 'absolute',
+          right: '8px',
+          top: '9px',
+          display: 'grid',
+          placeItems: 'center',
+          width: '26px',
+          height: '26px',
+          margin: '0',
+          padding: '0',
+          backgroundColor: 'transparent',
+          border: 'none',
+          borderRadius: '7px',
+          color: 'var(--text-3)',
+          fontSize: '16px',
+          lineHeight: '1',
+          cursor: 'pointer'
+        },
+        '.cm-search button[name=close]:hover': {
+          backgroundColor: 'var(--hover)',
+          color: 'var(--text)'
+        },
+        '.cm-search .cm-button:focus-visible, .cm-search button[name=close]:focus-visible': {
+          outline: '2px solid var(--accent)',
+          outlineOffset: '1px'
         },
         '.cm-placeholder': { color: 'var(--text-3)' }
       },
-      { dark: theme === 'dark' }
+      { dark: isDarkTheme(theme) }
     ),
     syntaxHighlighting(
       HighlightStyle.define([
@@ -236,7 +520,13 @@ export function Editor({
   const suppressRef = useRef(false)
 
   const readOnlyExtensions = (): Extension =>
-    readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []
+    readOnly
+      ? [
+          EditorState.readOnly.of(true),
+          EditorView.editable.of(false),
+          EditorView.editorAttributes.of({ 'data-readonly': 'true' })
+        ]
+      : []
 
   const featureExtensions = (): Extension =>
     lite ? [] : [highlightActiveLine(), highlightSelectionMatches(), bracketMatching()]
@@ -269,6 +559,8 @@ export function Editor({
           foldCompartment.current.of(foldExtensions()),
           featureCompartment.current.of(featureExtensions()),
           search({ top: true }),
+          replaceToggleExtension,
+          EditorState.phrases.of(SEARCH_PHRASES),
           langCompartment.current.of(initialLang.current ?? []),
           readCompartment.current.of(readOnlyExtensions()),
           keymap.of([
@@ -302,6 +594,10 @@ export function Editor({
       redo: () => {
         redo(view)
         view.focus()
+      },
+      selectAll: () => {
+        view.focus()
+        view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } })
       }
     })
     return () => {

@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type MouseEvent as ReactMouseEvent
+} from 'react'
 import type { FsEntry, SearchFileResult, SearchResult } from '../../../shared/types'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { FileTree } from './FileTree'
@@ -169,24 +177,29 @@ interface Props {
   currentPath: string | null
   version: number
   expanded: Set<string>
+  hiddenPaths: string[]
   onToggleDir: (path: string) => void
   onOpen: (path: string) => void
   onCreateIn: (dir: string, kind: 'file' | 'dir') => void
   onReveal: (path: string) => void
   onTrash: (entry: FsEntry) => void
+  onHideEntry: (entry: FsEntry) => void
+  onPickHidden: (dir: string) => void
   onRemoveRoot: (root: string) => void
 }
-
 export function FilesPanel({
   roots,
   currentPath,
   version,
   expanded,
+  hiddenPaths,
   onToggleDir,
   onOpen,
   onCreateIn,
   onReveal,
   onTrash,
+  onHideEntry,
+  onPickHidden,
   onRemoveRoot
 }: Props): JSX.Element {
   const [query, setQuery] = useState('')
@@ -196,6 +209,35 @@ export function FilesPanel({
   const inputRef = useRef<HTMLInputElement>(null)
   const text = query.trim()
   const rootsKey = roots.join('\n')
+
+  const hiddenSet = useMemo(() => {
+    const set = new Set<string>()
+    for (const path of hiddenPaths) set.add(normalize(path))
+    return set
+  }, [hiddenPaths])
+
+  const isHidden = useCallback(
+    (path: string): boolean => {
+      let current = normalize(path)
+      while (current) {
+        if (hiddenSet.has(current)) return true
+        const index = current.lastIndexOf('\\')
+        if (index <= 0) return false
+        current = current.slice(0, index)
+      }
+      return false
+    },
+    [hiddenSet]
+  )
+
+  const visibleResult = useMemo(() => {
+    if (!result) return null
+    return {
+      nameMatches: result.nameMatches.filter((entry) => !isHidden(entry.path)),
+      contentMatches: result.contentMatches.filter((file) => !isHidden(file.path)),
+      truncated: result.truncated
+    }
+  }, [result, isHidden])
 
   useEffect(() => {
     setQuery('')
@@ -246,22 +288,53 @@ export function FilesPanel({
     setMenu({ x: event.clientX, y: event.clientY, entry, isRoot })
   }
 
+  const hiddenUnder = (dir: string): number => {
+    const base = normalize(dir)
+    let count = 0
+    for (const path of hiddenPaths) {
+      const target = normalize(path)
+      if (target !== base && target.startsWith(base + '\\')) count++
+    }
+    return count
+  }
+
   const buildItems = (state: MenuState): ContextMenuItem[] => {
     const { entry, isRoot } = state
     if (isRoot) {
+      const hiddenCount = hiddenUnder(entry.path)
       return [
         { label: '新建文件', onClick: () => onCreateIn(entry.path, 'file') },
         { label: '新建文件夹', onClick: () => onCreateIn(entry.path, 'dir') },
         { label: '在资源管理器中显示', onClick: () => onReveal(entry.path) },
         { separator: true },
+        ...(hiddenCount
+          ? [
+              {
+                label: '显示隐藏项目…',
+                onClick: () => onPickHidden(entry.path)
+              },
+              { separator: true } as ContextMenuItem
+            ]
+          : []),
         { label: '移出文件树', onClick: () => onRemoveRoot(entry.path) }
       ]
     }
     if (entry.isDir) {
+      const hiddenCount = hiddenUnder(entry.path)
       return [
         { label: '新建文件', onClick: () => onCreateIn(entry.path, 'file') },
         { label: '新建文件夹', onClick: () => onCreateIn(entry.path, 'dir') },
         { label: '在资源管理器中显示', onClick: () => onReveal(entry.path) },
+        { separator: true },
+        { label: '从文件树隐藏', onClick: () => onHideEntry(entry) },
+        ...(hiddenCount
+          ? [
+              {
+                label: '显示隐藏项目…',
+                onClick: () => onPickHidden(entry.path)
+              }
+            ]
+          : []),
         { separator: true },
         { label: '删除（移到回收站）', danger: true, onClick: () => onTrash(entry) }
       ]
@@ -269,6 +342,8 @@ export function FilesPanel({
     return [
       { label: '打开', onClick: () => onOpen(entry.path) },
       { label: '在资源管理器中显示', onClick: () => onReveal(entry.path) },
+      { separator: true },
+      { label: '从文件树隐藏', onClick: () => onHideEntry(entry) },
       { separator: true },
       { label: '删除（移到回收站）', danger: true, onClick: () => onTrash(entry) }
     ]
@@ -308,7 +383,7 @@ export function FilesPanel({
 
       {text ? (
         <SearchResults
-          result={result}
+          result={visibleResult}
           query={text}
           searching={searching}
           roots={roots}
@@ -320,6 +395,7 @@ export function FilesPanel({
           roots={roots}
           currentPath={currentPath}
           expanded={expanded}
+          isHidden={isHidden}
           onToggle={onToggleDir}
           onOpen={onOpen}
           onContext={openMenu}

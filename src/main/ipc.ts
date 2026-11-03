@@ -20,11 +20,12 @@ import type {
   WriteResult
 } from '../shared/types'
 import { isTextFile, textFileExtensions } from '../shared/fileKinds'
+import { themeBackground } from '../shared/themes'
 import { listDirectory } from './fsTree'
 import { searchTree } from './fsSearch'
 import { getSettings, patchSettings, applyNativeTheme, resetPreferences, resolveThemeMode } from './settings'
 import { unwatchDocument, watchDocument } from './watcher'
-import { closeMainWindow, windowBackground } from './window'
+import { closeMainWindow } from './window'
 import { getAssocInfo, registerAssociation, unregisterAssociation } from './registry'
 
 type WindowGetter = () => BrowserWindow | null
@@ -264,7 +265,7 @@ export function registerIpc(getWin: WindowGetter): void {
     const next = patchSettings(input as never)
     if (patch && typeof patch.themeMode === 'string') {
       applyNativeTheme(next.themeMode)
-      getWin()?.setBackgroundColor(windowBackground(resolveThemeMode(next.themeMode)))
+      getWin()?.setBackgroundColor(themeBackground(resolveThemeMode(next.themeMode)))
     }
     return { settings: next, theme: resolveThemeMode(next.themeMode) }
   })
@@ -272,7 +273,7 @@ export function registerIpc(getWin: WindowGetter): void {
   ipcMain.handle('settings:reset', (): SettingsBundle => {
     const next = resetPreferences()
     applyNativeTheme(next.themeMode)
-    getWin()?.setBackgroundColor(windowBackground(resolveThemeMode(next.themeMode)))
+    getWin()?.setBackgroundColor(themeBackground(resolveThemeMode(next.themeMode)))
     return { settings: next, theme: resolveThemeMode(next.themeMode) }
   })
 
@@ -282,11 +283,32 @@ export function registerIpc(getWin: WindowGetter): void {
     if (action === 'cut') wc.cut()
     else if (action === 'copy') wc.copy()
     else if (action === 'paste') wc.paste()
-    else if (action === 'select-all') wc.selectAll()
   })
 
   ipcMain.on('app:close-confirm', () => {
     closeMainWindow()
+  })
+
+  ipcMain.on('window:minimize', () => {
+    const win = getWin()
+    if (win && !win.isDestroyed()) win.minimize()
+  })
+
+  ipcMain.on('window:toggle-maximize', () => {
+    const win = getWin()
+    if (!win || win.isDestroyed()) return
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+  })
+
+  ipcMain.on('window:close', () => {
+    const win = getWin()
+    if (win && !win.isDestroyed()) win.close()
+  })
+
+  ipcMain.handle('window:is-maximized', () => {
+    const win = getWin()
+    return !!win && !win.isDestroyed() && win.isMaximized()
   })
 
   ipcMain.handle('app:pending-file', (): string | null => {

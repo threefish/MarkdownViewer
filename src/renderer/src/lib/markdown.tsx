@@ -1,4 +1,4 @@
-import { Children, isValidElement, useMemo, type ReactNode } from 'react'
+import { Children, isValidElement, useEffect, useMemo, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -10,6 +10,7 @@ import rehypeHighlight from 'rehype-highlight'
 import type { PluggableList } from 'unified'
 import type { Schema } from 'hast-util-sanitize'
 import type { ThemeMode } from '../../../shared/types'
+import { ImageLightbox } from '../components/ImageLightbox'
 import { MermaidBlock } from '../components/MermaidBlock'
 import { rewriteLocalImages } from './rewriteUrls'
 import { stripFrontmatter } from './text'
@@ -88,6 +89,14 @@ interface Props {
 
 export function MarkdownDocument({ content, baseDir, theme, onLink }: Props): React.JSX.Element {
   const body = useMemo(() => stripFrontmatter(content), [content])
+  const [viewer, setViewer] = useState<{
+    images: Array<{ src: string; alt: string }>
+    index: number
+  } | null>(null)
+
+  useEffect(() => {
+    setViewer(null)
+  }, [content, baseDir])
 
   const rehypePlugins = useMemo<PluggableList>(
     () => [
@@ -115,7 +124,34 @@ export function MarkdownDocument({ content, baseDir, theme, onLink }: Props): Re
           {children}
         </a>
       ),
-      img: ({ node: _node, ...rest }) => <img {...rest} loading="lazy" decoding="async" />,
+      img: ({ node: _node, src, alt, ...rest }) => (
+        <img
+          {...rest}
+          src={src}
+          alt={alt ?? ''}
+          loading="lazy"
+          decoding="async"
+          onClick={(event) => {
+            const image = event.currentTarget
+            if (!image.getAttribute('src')) return
+            event.preventDefault()
+            event.stopPropagation()
+            const scope = image.closest('.markdown-body') ?? document
+            const images = Array.from(scope.querySelectorAll('img'))
+              .map((node) => ({
+                node,
+                src: node.getAttribute('src') ?? '',
+                alt: node.getAttribute('alt') ?? ''
+              }))
+              .filter((item) => item.src)
+            const index = images.findIndex((item) => item.node === image)
+            setViewer({
+              images: images.map((item) => ({ src: item.src, alt: item.alt })),
+              index: Math.max(0, index)
+            })
+          }}
+        />
+      ),
       table: ({ node: _node, children, ...rest }) => (
         <div className="table-wrap">
           <table {...rest}>{children}</table>
@@ -132,13 +168,22 @@ export function MarkdownDocument({ content, baseDir, theme, onLink }: Props): Re
   )
 
   return (
-    <ReactMarkdown
-      remarkPlugins={remarkPlugins}
-      rehypePlugins={rehypePlugins}
-      components={components}
-      urlTransform={(url) => url}
-    >
-      {body}
-    </ReactMarkdown>
+    <>
+      <ReactMarkdown
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        components={components}
+        urlTransform={(url) => url}
+      >
+        {body}
+      </ReactMarkdown>
+      {viewer ? (
+        <ImageLightbox
+          images={viewer.images}
+          initialIndex={viewer.index}
+          onClose={() => setViewer(null)}
+        />
+      ) : null}
+    </>
   )
 }

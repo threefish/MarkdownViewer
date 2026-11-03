@@ -34,6 +34,66 @@ html[data-theme='sepia'] {
   --hl-meta: #7a5f95;
 }
 
+html[data-theme='github-light'] {
+  --hl-keyword: #cf222e;
+  --hl-string: #0a3069;
+  --hl-comment: #6e7781;
+  --hl-number: #0550ae;
+  --hl-title: #8250df;
+  --hl-attr: #0550ae;
+  --hl-builtin: #953800;
+  --hl-variable: #953800;
+  --hl-meta: #8250df;
+}
+
+html[data-theme='github-dark'] {
+  --hl-keyword: #ff7b72;
+  --hl-string: #a5d6ff;
+  --hl-comment: #8b949e;
+  --hl-number: #79c0ff;
+  --hl-title: #d2a8ff;
+  --hl-attr: #79c0ff;
+  --hl-builtin: #ffa657;
+  --hl-variable: #ffa657;
+  --hl-meta: #d2a8ff;
+}
+
+html[data-theme='vscode-light'] {
+  --hl-keyword: #0000ff;
+  --hl-string: #a31515;
+  --hl-comment: #008000;
+  --hl-number: #098658;
+  --hl-title: #795e26;
+  --hl-attr: #e50000;
+  --hl-builtin: #267f99;
+  --hl-variable: #001080;
+  --hl-meta: #af00db;
+}
+
+html[data-theme='vscode-dark'] {
+  --hl-keyword: #569cd6;
+  --hl-string: #ce9178;
+  --hl-comment: #6a9955;
+  --hl-number: #b5cea8;
+  --hl-title: #dcdcaa;
+  --hl-attr: #9cdcfe;
+  --hl-builtin: #4ec9b0;
+  --hl-variable: #9cdcfe;
+  --hl-meta: #c586c0;
+}
+
+html[data-theme='one-dark'] {
+  --hl-keyword: #c678dd;
+  --hl-string: #98c379;
+  --hl-comment: #5c6370;
+  --hl-number: #d19a66;
+  --hl-title: #61afef;
+  --hl-attr: #d19a66;
+  --hl-builtin: #e6c07b;
+  --hl-variable: #e06c75;
+  --hl-meta: #56b6c2;
+}
+
 .markdown-body .hljs {
   color: var(--text);
   background: transparent;
