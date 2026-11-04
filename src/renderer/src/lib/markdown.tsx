@@ -8,12 +8,16 @@ import rehypeKatex from 'rehype-katex'
 import rehypeSlug from 'rehype-slug'
 import rehypeHighlight from 'rehype-highlight'
 import type { PluggableList } from 'unified'
+import type { Element, Root } from 'hast'
+import { visit } from 'unist-util-visit'
 import type { Schema } from 'hast-util-sanitize'
 import type { ThemeMode } from '../../../shared/types'
 import { ImageLightbox } from '../components/ImageLightbox'
 import { MermaidBlock } from '../components/MermaidBlock'
 import { rewriteLocalImages } from './rewriteUrls'
 import { stripFrontmatter } from './text'
+
+const TASK_LINE = 'mdvtaskline'
 
 const schema: Schema = {
   ...defaultSchema,
@@ -29,7 +33,7 @@ const schema: Schema = {
     pre: [...(defaultSchema.attributes?.pre ?? []), 'className'],
     span: [...(defaultSchema.attributes?.span ?? []), 'className'],
     div: [...(defaultSchema.attributes?.div ?? []), 'className'],
-    input: ['type', 'checked', 'disabled'],
+    input: ['type', 'checked', 'disabled', TASK_LINE],
     details: ['open']
   },
   protocols: {
@@ -40,6 +44,47 @@ const schema: Schema = {
 }
 
 const remarkPlugins: PluggableList = [remarkGfm, [remarkMath]]
+
+function isTaskListItem(node: Element): boolean {
+  const className = node.properties?.className
+  const names = Array.isArray(className) ? className : [className]
+  return names.some((name) => String(name) === 'task-list-item')
+}
+
+function firstCheckbox(nodes: Element['children']): Element | null {
+  for (const child of nodes) {
+    if (child.type !== 'element') continue
+    if (child.tagName === 'input') return child
+    const nested = firstCheckbox(child.children)
+    if (nested) return nested
+  }
+  return null
+}
+
+// remark-gfm 合成的复选框不带位置信息，把所在任务项的源码行号写进它的属性。
+function markTaskCheckboxLines() {
+  return (tree: Root): void => {
+    const claimed = new Set<Element>()
+    visit(tree, 'element', (node: Element) => {
+      if (node.tagName === 'li' && isTaskListItem(node)) {
+        const line = node.position?.start.line
+        const box = firstCheckbox(node.children)
+        if (box && line) {
+          box.properties[TASK_LINE] = String(line)
+          claimed.add(box)
+        }
+        return
+      }
+      if (node.tagName === 'input' && !claimed.has(node)) delete node.properties[TASK_LINE]
+    })
+  }
+}
+
+function lineOf(node: Element | undefined, offset: number): number {
+  const raw = node?.properties?.[TASK_LINE]
+  const bodyLine = typeof raw === 'string' ? Number.parseInt(raw, 10) : Number.NaN
+  return Number.isInteger(bodyLine) && bodyLine > 0 ? bodyLine + offset : 0
+}
 
 function textOf(node: ReactNode): string {
   if (node === null || node === undefined || typeof node === 'boolean') return ''
@@ -85,10 +130,22 @@ interface Props {
   baseDir: string
   theme: ThemeMode
   onLink: (href: string) => void
+  onTaskToggle?: (line: number, checked: boolean) => void
 }
 
-export function MarkdownDocument({ content, baseDir, theme, onLink }: Props): React.JSX.Element {
-  const body = useMemo(() => stripFrontmatter(content), [content])
+export function MarkdownDocument({
+  content,
+  baseDir,
+  theme,
+  onLink,
+  onTaskToggle
+}: Props): React.JSX.Element {
+  const { body, lineOffset } = useMemo(() => {
+    const stripped = stripFrontmatter(content)
+    const removed = content.length - stripped.length
+    const offset = removed > 0 ? (content.slice(0, removed).match(/\n/g)?.length ?? 0) : 0
+    return { body: stripped, lineOffset: offset }
+  }, [content])
   const [viewer, setViewer] = useState<{
     images: Array<{ src: string; alt: string }>
     index: number
@@ -102,6 +159,7 @@ export function MarkdownDocument({ content, baseDir, theme, onLink }: Props): Re
     () => [
       rehypeRaw,
       [rewriteLocalImages, { baseDir }],
+      markTaskCheckboxLines,
       [rehypeSanitize, schema],
       [rehypeKatex, { throwOnError: false, errorColor: '#c95c5c' }],
       rehypeSlug,
@@ -157,14 +215,25 @@ export function MarkdownDocument({ content, baseDir, theme, onLink }: Props): Re
           <table {...rest}>{children}</table>
         </div>
       ),
-      input: ({ node: _node, ...rest }) => <input {...rest} readOnly />,
+      input: ({ node: _node, ...rest }) => {
+        const line = lineOf(_node, lineOffset)
+        if (!line || !onTaskToggle) return <input {...rest} readOnly />
+        const { checked, disabled: _disabled, ...boxProps } = rest
+        return (
+          <input
+            {...boxProps}
+            checked={Boolean(checked)}
+            onChange={(event) => onTaskToggle(line, event.currentTarget.checked)}
+          />
+        )
+      },
       pre: ({ node: _node, children, ...rest }) => (
         <CodeBlock {...rest} theme={theme}>
           {children}
         </CodeBlock>
       )
     }),
-    [onLink, theme]
+    [onLink, theme, lineOffset, onTaskToggle]
   )
 
   return (

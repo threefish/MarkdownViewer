@@ -30,7 +30,7 @@ import { MarkdownDocument } from './lib/markdown'
 import { languageKeyForPath } from './lib/codeLanguage'
 import { docTier, hasVeryLongLine, isLargeDoc } from './lib/largeFile'
 import { classifyHref } from './lib/pathResolve'
-import { errorMessage } from './lib/text'
+import { applyTaskToggle, errorMessage } from './lib/text'
 
 const Editor = lazy(() =>
   import('./components/Editor').then((module) => ({ default: module.Editor }))
@@ -890,6 +890,18 @@ export default function App(): JSX.Element {
     [openDoc, scrollToHeading]
   )
 
+  const handleTaskToggle = useCallback(
+    (line: number, checked: boolean) => {
+      const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
+      if (!tab || tab.editing || !isMarkdownFile(tab.path)) return
+      if (docTier(tab.content.length) !== 'normal') return
+      const next = applyTaskToggle(tab.draft ?? tab.content, line, checked)
+      if (next === null) return
+      updateTab(tab.path, { draft: next })
+    },
+    [updateTab]
+  )
+
   const handleScroll = useCallback(() => {
     const id = activeIdRef.current
     if (id) scrollMap.current.set(id, ratioOf(readerRef.current))
@@ -1466,6 +1478,7 @@ export default function App(): JSX.Element {
                       baseDir={active.root}
                       theme={theme}
                       onLink={handleLink}
+                      onTaskToggle={handleTaskToggle}
                     />
                   </article>
                   <footer className="doc-foot">

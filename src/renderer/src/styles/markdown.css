@@ -117,6 +117,11 @@
   accent-color: var(--accent);
 }
 
+/* 阅读模式下任务复选框可点击，勾选会改写源码并标记为未保存 */
+.markdown-body .task-list-item input[type='checkbox']:not([disabled]) {
+  cursor: pointer;
+}
+
 .markdown-body img {
   max-width: 100%;
   height: auto;
