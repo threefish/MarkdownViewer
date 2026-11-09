@@ -17,7 +17,12 @@
     "isolatedModules": true,
     "types": [
       "vite/client"
-    ]
+    ],
+    "paths": {
+      "@excalidraw/utils/*": [
+        "./node_modules/@excalidraw/excalidraw/dist/types/utils/*"
+      ]
+    }
   },
   "include": [
     "src/renderer/src/**/*.ts",

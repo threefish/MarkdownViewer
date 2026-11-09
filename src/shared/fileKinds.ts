@@ -3,7 +3,7 @@ const MARKDOWN_EXTS = new Set(['md', 'markdown'])
 const TEXT_EXTS = new Set([
   'adoc', 'asc', 'astro', 'bash', 'bat', 'bib', 'c', 'cc', 'cfg', 'cjs', 'clj', 'cljs',
   'cmd', 'conf', 'cpp', 'cs', 'css', 'csv', 'cts', 'cxx', 'dart', 'diff', 'elm', 'env',
-  'erl', 'ex', 'exs', 'fish', 'go', 'gradle', 'graphql', 'groovy', 'gql', 'h', 'hh',
+  'erl', 'ex', 'excalidraw', 'exs', 'fish', 'go', 'gradle', 'graphql', 'groovy', 'gql', 'h', 'hh',
   'hpp', 'hrl', 'hs', 'htm', 'html', 'ini', 'java', 'js', 'json', 'json5', 'jsonc',
   'jsx', 'kt', 'kts', 'less', 'lhs', 'lock', 'log', 'lua', 'm', 'markdown', 'md', 'mjs',
   'mm', 'mts', 'nfo', 'patch', 'php', 'pl', 'pm', 'properties', 'proto', 'ps1', 'psm1',
@@ -49,6 +49,10 @@ export function fileExt(p: string): string {
 
 export function isMarkdownFile(p: string): boolean {
   return MARKDOWN_EXTS.has(fileExt(p))
+}
+
+export function isExcalidrawFile(p: string): boolean {
+  return fileExt(p) === 'excalidraw'
 }
 
 export function isTextFile(p: string): boolean {

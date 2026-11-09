@@ -923,6 +923,56 @@ body.sidebar-resizing .sidebar-inner {
   height: 100%;
 }
 
+/* ---------- excalidraw ---------- */
+
+.excalidraw-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.excalidraw-pane .excalidraw {
+  height: 100%;
+}
+
+/* 内置欢迎屏含 excalidraw.com 链接，改用应用自己的中文提示。 */
+.excalidraw-pane .welcome-screen-center,
+.excalidraw-pane .welcome-screen-decor {
+  display: none;
+}
+
+.excalidraw-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.excalidraw-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.excalidraw-message strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
 .editor-status {
   flex: 0 0 auto;
   display: flex;

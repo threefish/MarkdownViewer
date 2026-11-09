@@ -5,6 +5,8 @@ interface Props {
   kind: 'file' | 'dir'
   dir: string | null
   defaultExt: string
+  mode?: 'create' | 'rename'
+  currentName?: string
   busy: boolean
   error: string | null
   onSubmit: (name: string) => void
@@ -16,6 +18,8 @@ export function NewEntryDialog({
   kind,
   dir,
   defaultExt,
+  mode = 'create',
+  currentName,
   busy,
   error,
   onSubmit,
@@ -23,10 +27,15 @@ export function NewEntryDialog({
 }: Props): JSX.Element | null {
   const [name, setName] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const renaming = mode === 'rename'
 
   useEffect(() => {
     if (!open) return
-    const initial = kind === 'file' ? `未命名.${defaultExt}` : '新建文件夹'
+    const initial = renaming
+      ? (currentName ?? '')
+      : kind === 'file'
+        ? `未命名.${defaultExt}`
+        : '新建文件夹'
     setName(initial)
     const timer = window.setTimeout(() => {
       const input = inputRef.current
@@ -36,7 +45,7 @@ export function NewEntryDialog({
       input.setSelectionRange(0, kind === 'file' && dot > 0 ? dot : initial.length)
     }, 30)
     return () => window.clearTimeout(timer)
-  }, [open, kind, defaultExt])
+  }, [open, kind, defaultExt, renaming, currentName])
 
   useEffect(() => {
     if (!open) return
@@ -53,7 +62,7 @@ export function NewEntryDialog({
 
   if (!open) return null
 
-  const title = kind === 'file' ? '新建文件' : '新建文件夹'
+  const title = renaming ? '重命名' : kind === 'file' ? '新建文件' : '新建文件夹'
 
   return (
     <div className="modal-backdrop" onMouseDown={onCancel}>
@@ -86,7 +95,7 @@ export function NewEntryDialog({
             取消
           </button>
           <button type="submit" className="btn primary" disabled={busy || !name.trim()}>
-            {busy ? '创建中…' : '创建'}
+            {busy ? (renaming ? '重命名中…' : '创建中…') : renaming ? '重命名' : '创建'}
           </button>
         </div>
       </form>

@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent
 } from 'react'
 import type { FsEntry, SearchFileResult, SearchResult } from '../../../shared/types'
@@ -20,6 +21,12 @@ function parentOf(path: string): string {
   const normalized = path.replace(/\//g, '\\').replace(/\\+$/, '')
   const index = normalized.lastIndexOf('\\')
   return index > 0 ? normalized.slice(0, index) : ''
+}
+
+function entryFromPath(value: string, isDir: boolean): FsEntry {
+  const trimmed = value.replace(/[\\/]+$/, '')
+  const index = Math.max(trimmed.lastIndexOf('\\'), trimmed.lastIndexOf('/'))
+  return { name: index >= 0 ? trimmed.slice(index + 1) : trimmed, path: value, isDir }
 }
 
 function rootOf(path: string, roots: string[]): string | null {
@@ -183,6 +190,7 @@ interface Props {
   onCreateIn: (dir: string, kind: 'file' | 'dir') => void
   onReveal: (path: string) => void
   onTrash: (entry: FsEntry) => void
+  onRename: (entry: FsEntry) => void
   onHideEntry: (entry: FsEntry) => void
   onPickHidden: (dir: string) => void
   onRemoveRoot: (root: string) => void
@@ -198,6 +206,7 @@ export function FilesPanel({
   onCreateIn,
   onReveal,
   onTrash,
+  onRename,
   onHideEntry,
   onPickHidden,
   onRemoveRoot
@@ -207,6 +216,7 @@ export function FilesPanel({
   const [searching, setSearching] = useState(false)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const focusedEntry = useRef<FsEntry | null>(null)
   const text = query.trim()
   const rootsKey = roots.join('\n')
 
@@ -285,7 +295,28 @@ export function FilesPanel({
   const openMenu = (event: ReactMouseEvent, entry: FsEntry, isRoot: boolean): void => {
     event.preventDefault()
     event.stopPropagation()
+    focusedEntry.current = entry
     setMenu({ x: event.clientX, y: event.clientY, entry, isRoot })
+  }
+
+  const trackToggle = (path: string): void => {
+    focusedEntry.current = entryFromPath(path, true)
+    onToggleDir(path)
+  }
+
+  const trackOpen = (path: string): void => {
+    focusedEntry.current = entryFromPath(path, false)
+    onOpen(path)
+  }
+
+  const handleRenameKey = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (event.key !== 'F2') return
+    const tag = (event.target as HTMLElement).tagName
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return
+    const entry = focusedEntry.current
+    if (!entry) return
+    event.preventDefault()
+    onRename(entry)
   }
 
   const hiddenUnder = (dir: string): number => {
@@ -305,6 +336,7 @@ export function FilesPanel({
       return [
         { label: '新建文件', onClick: () => onCreateIn(entry.path, 'file') },
         { label: '新建文件夹', onClick: () => onCreateIn(entry.path, 'dir') },
+        { label: '重命名', onClick: () => onRename(entry) },
         { label: '在资源管理器中显示', onClick: () => onReveal(entry.path) },
         { separator: true },
         ...(hiddenCount
@@ -324,6 +356,7 @@ export function FilesPanel({
       return [
         { label: '新建文件', onClick: () => onCreateIn(entry.path, 'file') },
         { label: '新建文件夹', onClick: () => onCreateIn(entry.path, 'dir') },
+        { label: '重命名', onClick: () => onRename(entry) },
         { label: '在资源管理器中显示', onClick: () => onReveal(entry.path) },
         { separator: true },
         { label: '从文件树隐藏', onClick: () => onHideEntry(entry) },
@@ -341,6 +374,7 @@ export function FilesPanel({
     }
     return [
       { label: '打开', onClick: () => onOpen(entry.path) },
+      { label: '重命名', onClick: () => onRename(entry) },
       { label: '在资源管理器中显示', onClick: () => onReveal(entry.path) },
       { separator: true },
       { label: '从文件树隐藏', onClick: () => onHideEntry(entry) },
@@ -350,7 +384,7 @@ export function FilesPanel({
   }
 
   return (
-    <div className="files-panel">
+    <div className="files-panel" onKeyDown={handleRenameKey}>
       <div className="side-search">
         <SearchIcon className="side-search-icon" />
         <input
@@ -396,8 +430,8 @@ export function FilesPanel({
           currentPath={currentPath}
           expanded={expanded}
           isHidden={isHidden}
-          onToggle={onToggleDir}
-          onOpen={onOpen}
+          onToggle={trackToggle}
+          onOpen={trackOpen}
           onContext={openMenu}
         />
       )}

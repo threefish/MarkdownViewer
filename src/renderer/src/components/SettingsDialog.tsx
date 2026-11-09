@@ -58,6 +58,7 @@ const FONT_OPTIONS: Array<{ value: ContentFont; label: string }> = [
 const NEW_FILE_EXTS: Array<{ value: string; label: string }> = [
   { value: 'md', label: 'Markdown (.md)' },
   { value: 'markdown', label: 'Markdown (.markdown)' },
+  { value: 'excalidraw', label: 'Excalidraw 画板 (.excalidraw)' },
   { value: 'txt', label: '纯文本 (.txt)' },
   { value: 'log', label: '日志 (.log)' },
   { value: 'csv', label: 'CSV (.csv)' },

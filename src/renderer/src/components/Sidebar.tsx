@@ -23,6 +23,7 @@ interface Props {
   onCreateIn: (dir: string, kind: 'file' | 'dir') => void
   onReveal: (path: string) => void
   onTrash: (entry: FsEntry) => void
+  onRename: (entry: FsEntry) => void
   onHideEntry: (entry: FsEntry) => void
   onPickHidden: (dir: string) => void
   onRemoveRoot: (root: string) => void
@@ -49,6 +50,7 @@ export function Sidebar({
   onCreateIn,
   onReveal,
   onTrash,
+  onRename,
   onHideEntry,
   onPickHidden,
   onRemoveRoot,
@@ -110,6 +112,7 @@ export function Sidebar({
               onCreateIn={onCreateIn}
               onReveal={onReveal}
               onTrash={onTrash}
+              onRename={onRename}
               onHideEntry={onHideEntry}
               onPickHidden={onPickHidden}
               onRemoveRoot={onRemoveRoot}

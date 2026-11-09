@@ -7,7 +7,7 @@
 [![Electron](https://img.shields.io/badge/Electron-45-2B2E3A?style=flat-square)](https://www.electronjs.org/)
 [![License](https://img.shields.io/badge/license-MIT-2E7D32?style=flat-square)](LICENSE)
 
-Markdown Viewer 是一个本地优先的桌面阅读器：没有账号、没有云端、没有遥测。打开文件或文件夹即可阅读 Markdown、纯文本和常见代码文件，也可以直接编辑保存。界面为阅读而设计，支持完整 Markdown 渲染、多标签、文件树、全文搜索和 Windows 文件关联。
+Markdown Viewer 是一个本地优先的桌面阅读器：没有账号、没有云端、没有遥测。打开文件或文件夹即可阅读 Markdown、纯文本和常见代码文件，也可以直接编辑保存，还能新建和编辑 Excalidraw 画板。界面为阅读而设计，支持完整 Markdown 渲染、多标签、文件树、全文搜索和 Windows 文件关联。
 
 ![Markdown 阅读界面](docs/screenshots/reading-image.png)
 
@@ -18,8 +18,9 @@ Markdown Viewer 是一个本地优先的桌面阅读器：没有账号、没有�
 - **本地图片**：支持相对路径、绝对路径、`https` 与 `data:` URI；中文目录、空格文件名均可解析；点击图片可弹层查看，支持缩放、旋转、翻转、拖拽，以及上一张/下一张切换。
 - **多文档工作区**：多根文件树、标签页、会话恢复、最近打开，支持拖拽、命令行参数和第二次启动继续打开文件。
 - **阅读与编辑**：Markdown 可在预览与源码之间切换；文本和代码文件使用 CodeMirror 6 高亮编辑。阅读模式下可直接点选任务列表复选框，勾选与取消会改写源码对应行并标记为未保存，`Ctrl+S` 落盘。保存前检测外部修改，冲突时给出横幅选择。
+- **Excalidraw 画板**：`.excalidraw` 与 Markdown 一样可直接新建、打开、绘制并 `Ctrl+S` 保存，`Ctrl+E` 在只读画布与完整编辑器之间切换，外部修改与保存冲突沿用同一套检测。Markdown 中用 `![](./x.excalidraw)` 或 `![[x.excalidraw]]` 嵌入画板，渲染为静态 SVG，点击即在标签页打开源文件；画板在标签页中保存后嵌入会自动刷新，未被打开的画板只在主题切换或所在 Markdown 重新加载时刷新。字体随包分发，绘图与导出全程离线；画布内的撤销、复制等操作沿用 Excalidraw 自身快捷键（先点击画布获得焦点）。
 - **查找**：Markdown 预览内查找、编辑器内查找；文件树同时支持文件名与文件内容搜索。
-- **文件管理**：新建文件/文件夹（可在设置中选择默认格式），在资源管理器中定位、删除到回收站、右键菜单操作；可以把不关心的文件或文件夹从文件树隐藏，在父级节点右键选择具体项目恢复，或到设置中管理隐藏列表。
+- **文件管理**：新建文件/文件夹（可在设置中选择默认格式），在资源管理器中定位、删除到回收站、右键菜单操作；文件、文件夹与根目录都可重命名（右键或 `F2`），改名后已打开的标签页会迁移到新路径并保留未保存的内容；可以把不关心的文件或文件夹从文件树隐藏，在父级节点右键选择具体项目恢复，或到设置中管理隐藏列表。
 - **大文件优化**：按字符数自动切换精简模式，避免超大文件在后台被完整解析，10 MB 级纯文本也能快速打开和平滑滚动。
 - **Windows 集成**：无边框自定义标题栏，集成侧栏开关、菜单与最小化/最大化/关闭控件；注册/修复 `.md` 与 `.markdown` 文件关联，关闭窗口后驻留托盘，单实例运行。
 - **本地与安全**：无账号、无遥测；启用 `contextIsolation` 与渲染进程沙箱，Markdown 中的 HTML 会被净化，外链交由系统浏览器打开。
@@ -62,6 +63,7 @@ Markdown Viewer 是一个本地优先的桌面阅读器：没有账号、没有�
 | 类型 | 扩展名 / 文件名 | 行为 |
 | --- | --- | --- |
 | Markdown | `.md` `.markdown` | 预览 + 源码编辑 |
+| 画板 | `.excalidraw` | 画板阅读 + 编辑保存 |
 | 文本 / 代码 | 见下方说明 | 高亮显示 + 编辑保存 |
 
 代码与文本采用白名单识别，覆盖 JavaScript / TypeScript / JSX / TSX、JSON、HTML、CSS / SCSS / LESS、Python、Java、C / C++、C#、Go、Rust、PHP、Ruby、Perl、Lua、R、Swift、Kotlin、Scala、Dart、Objective-C、Shell、PowerShell、Batch、SQL、YAML、TOML、INI / Properties、`.env`、TeX、GraphQL、Vue / Svelte / Astro、Diff / Patch、日志、CSV / TSV、`Dockerfile`、`Makefile`、`LICENSE`、`README` 等。完整列表见 [`src/shared/fileKinds.ts`](src/shared/fileKinds.ts) 与 [`src/renderer/src/lib/codeLanguage.ts`](src/renderer/src/lib/codeLanguage.ts)。
@@ -99,6 +101,7 @@ Markdown Viewer 是一个本地优先的桌面阅读器：没有账号、没有�
 | `Ctrl+W` | 关闭当前标签页 |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | 切换标签页 |
 | `Ctrl+,` | 打开设置 |
+| `F2` | 重命名文件树中选中的文件或文件夹 |
 | `F5` | 重新加载当前文档 |
 | `Alt+F4` | 退出应用 |
 | `Esc` | 关闭设置、查找、图片弹层或对话框 |
@@ -134,6 +137,8 @@ npm run pack     # 构建并用 electron-builder 生成 release/win-unpacked
 npm run zip      # 将 release/win-unpacked 压缩为 zip
 ```
 
+`npm run build` 在 electron-vite 之后会执行 [`scripts/copy-excalidraw-assets.mjs`](scripts/copy-excalidraw-assets.mjs)，把 Excalidraw 的字体（含中文 Xiaolai 的 unicode-range 分片，约 13 MB / 234 个文件）拷到 `out/renderer/excalidraw/fonts`。这一步必须在构建之后跑，因为 renderer 的输出目录会被清空；打包后的窗口通过 `mdv://asset/` 读取这些字体，因此画板与 SVG 导出不依赖任何 CDN。压缩包体积也因此比纯文本版本大约 13 MB。
+
 目录结构：
 
 ```text
@@ -144,10 +149,11 @@ src/
   shared/     主进程与渲染进程共享的类型和白名单
 docs/
   screenshots/ README 截图
+scripts/      构建后处理（Excalidraw 字体拷贝）
 fixtures/     渲染能力验收用的示例文档
 ```
 
-技术栈：Electron 45、electron-vite 6、React 19、TypeScript 7、CodeMirror 6、react-markdown、remark / rehype、KaTeX、Mermaid。
+技术栈：Electron 45、electron-vite 6、React 19、TypeScript 7、CodeMirror 6、react-markdown、remark / rehype、KaTeX、Mermaid、Excalidraw。
 
 ## 隐私
 

@@ -14,17 +14,18 @@ import type {
   DocPayload,
   FsEntry,
   PathStat,
+  RenameEntryResult,
   SearchResult,
   SettingsBundle,
   TrashResult,
   WriteResult
 } from '../shared/types'
-import { isTextFile, textFileExtensions } from '../shared/fileKinds'
+import { isExcalidrawFile, isTextFile, textFileExtensions } from '../shared/fileKinds'
 import { themeBackground } from '../shared/themes'
 import { listDirectory } from './fsTree'
 import { searchTree } from './fsSearch'
 import { getSettings, patchSettings, applyNativeTheme, resetPreferences, resolveThemeMode } from './settings'
-import { unwatchDocument, watchDocument } from './watcher'
+import { unwatchDocument, watchDocument, pauseWatched, renameWatched, resumeWatched } from './watcher'
 import { closeMainWindow } from './window'
 import { getAssocInfo, registerAssociation, unregisterAssociation } from './registry'
 
@@ -41,6 +42,13 @@ function requireAbsPath(value: unknown, what = '路径'): string {
     throw new Error(`无效的${what}`)
   }
   return value
+}
+
+function exists(target: string): Promise<boolean> {
+  return fs.lstat(target).then(
+    () => true,
+    () => false
+  )
 }
 
 function send(getWin: WindowGetter, channel: string, payload: unknown): void {
@@ -92,14 +100,19 @@ export function registerIpc(getWin: WindowGetter): void {
   ipcMain.handle('doc:read', async (_event, rawPath: string): Promise<DocPayload> => {
     const doc = await readDocument(rawPath)
     watchDocument(doc.path, {
-      changed: (mtimeMs) => send(getWin, 'doc:changed', { path: doc.path, mtimeMs }),
-      deleted: () => send(getWin, 'doc:deleted', { path: doc.path })
+      changed: (file, mtimeMs) => send(getWin, 'doc:changed', { path: file, mtimeMs }),
+      deleted: (file) => send(getWin, 'doc:deleted', { path: file })
     })
     return doc
   })
 
   ipcMain.handle('doc:unwatch', (_event, rawPath: string) => {
     if (typeof rawPath === 'string' && path.isAbsolute(rawPath)) unwatchDocument(rawPath)
+  })
+
+  // 嵌入预览只读取，不注册监听：watchDocument 按路径替换 handlers，会顶掉已打开标签页的监听。
+  ipcMain.handle('scene:read', async (_event, rawPath: string): Promise<DocPayload> => {
+    return readDocument(rawPath)
   })
 
   ipcMain.handle('doc:write', async (_event, raw: {
@@ -190,13 +203,29 @@ export function registerIpc(getWin: WindowGetter): void {
       const stat = await fs.stat(dir)
       if (!stat.isDirectory()) return { ok: false, message: '目标不是文件夹' }
       const finalName =
-        kind === 'file' && !name.includes('.') && !isTextFile(name) ? `${name}.md` : name
+        kind === 'file' && !name.includes('.') && !isTextFile(name)
+          ? `${name}.${getSettings().newFileExt}`
+          : name
       const target = path.join(dir, finalName)
       if (kind === 'dir') {
         await fs.mkdir(target)
       } else {
         const handle = await fs.open(target, 'wx')
-        await handle.close()
+        try {
+          if (isExcalidrawFile(target)) {
+            const scene = {
+              type: 'excalidraw',
+              version: 2,
+              source: 'md-viewer',
+              elements: [],
+              appState: { viewBackgroundColor: '#ffffff' },
+              files: {}
+            }
+            await handle.writeFile(JSON.stringify(scene, null, 2), 'utf8')
+          }
+        } finally {
+          await handle.close()
+        }
       }
       return { ok: true, path: target }
     } catch (err) {
@@ -208,6 +237,54 @@ export function registerIpc(getWin: WindowGetter): void {
     }
   })
 
+  ipcMain.handle('fs:rename', async (_event, raw: {
+    path?: unknown
+    name?: unknown
+  }): Promise<RenameEntryResult> => {
+    try {
+      const source = requireAbsPath(raw?.path, '路径')
+      const name = typeof raw?.name === 'string' ? raw.name.trim() : ''
+      if (!name) return { ok: false, message: '请输入名称' }
+      if (name.length > 120) return { ok: false, message: '名称过长' }
+      if (/[\\/:*?"<>|]/.test(name) || name === '.' || name === '..') {
+        return { ok: false, message: '名称不能包含 \\ / : * ? " < > |' }
+      }
+      if (/[.\s]$/.test(name)) return { ok: false, message: '名称不能以点或空格结尾' }
+      if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(name)) {
+        return { ok: false, message: '该名称是系统保留名称' }
+      }
+      const real = await fs.realpath(source)
+      const stat = await fs.stat(real)
+      const finalName =
+        !stat.isDirectory() && !name.includes('.') && !isTextFile(name)
+          ? `${name}${path.extname(real)}`
+          : name
+      const target = path.join(path.dirname(real), finalName)
+      const samePath = target.toLowerCase() === real.toLowerCase()
+      if (samePath && target === real) return { ok: true, path: real }
+      if (!samePath && (await exists(target))) {
+        return { ok: false, message: '同名文件或文件夹已存在' }
+      }
+      pauseWatched(real)
+      let renamed = false
+      try {
+        await fs.rename(real, target)
+        renamed = true
+      } finally {
+        if (!renamed) resumeWatched(real)
+      }
+      const next = await fs.realpath(target)
+      renameWatched(real, next)
+      return { ok: true, path: next }
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'ENOENT') return { ok: false, message: '文件或文件夹不存在' }
+      if (code === 'ENOTEMPTY') return { ok: false, message: '目标位置已有同名文件夹' }
+      if (code === 'EACCES' || code === 'EPERM') return { ok: false, message: '没有重命名权限，项目可能正被占用' }
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle('fs:trash', async (_event, rawPath: string): Promise<TrashResult> => {
     try {
       const target = requireAbsPath(rawPath, '路径')
@@ -215,7 +292,13 @@ export function registerIpc(getWin: WindowGetter): void {
       if (!stat.isDirectory() && !stat.isFile()) {
         return { ok: false, message: '不支持删除此类型的项目' }
       }
-      await shell.trashItem(target)
+      pauseWatched(target)
+      try {
+        await shell.trashItem(target)
+      } catch (err) {
+        resumeWatched(target)
+        throw err
+      }
       return { ok: true }
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code

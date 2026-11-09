@@ -11,7 +11,7 @@ import {
 } from 'react'
 import type { AppInfo, ContentFont, DocPayload, FsEntry, Settings, ThemeMode } from '../../shared/types'
 import { isThemePreference } from '../../shared/themes'
-import { isMarkdownFile } from '../../shared/fileKinds'
+import { isExcalidrawFile, isMarkdownFile } from '../../shared/fileKinds'
 import { AboutDialog } from './components/AboutDialog'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import type { EditorHandle } from './components/Editor'
@@ -34,6 +34,10 @@ import { applyTaskToggle, errorMessage } from './lib/text'
 
 const Editor = lazy(() =>
   import('./components/Editor').then((module) => ({ default: module.Editor }))
+)
+
+const ExcalidrawPane = lazy(() =>
+  import('./components/ExcalidrawPane').then((module) => ({ default: module.ExcalidrawPane }))
 )
 
 const INITIAL_SETTINGS: Settings = {
@@ -125,10 +129,24 @@ function dirnameOf(file: string): string {
   return index > 0 ? normalized.slice(0, index) : normalized
 }
 
+function basenameOf(file: string): string {
+  const normalized = file.replace(/\//g, '\\').replace(/\\+$/, '')
+  const index = normalized.lastIndexOf('\\')
+  return index >= 0 ? normalized.slice(index + 1) : normalized
+}
+
 function isWithin(file: string, dir: string): boolean {
   const f = file.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()
   const d = dir.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()
   return f === d || f.startsWith(d + '\\')
+}
+
+/** 重命名后改写路径：命中旧路径本身或其内部项目时换到新前缀，否则原样返回。 */
+function rebaseUnder(value: string, oldBase: string, newBase: string): string {
+  const base = oldBase.replace(/\//g, '\\').replace(/\\+$/, '')
+  if (!isWithin(value, base)) return value
+  const tail = value.replace(/\//g, '\\').replace(/\\+$/, '').slice(base.length)
+  return `${newBase}${tail}`
 }
 
 function findRoot(file: string, roots: string[]): string | null {
@@ -175,6 +193,7 @@ export default function App(): JSX.Element {
   const [batchClose, setBatchClose] = useState<{ paths: string[]; dirty: string[] } | null>(null)
   const [conflict, setConflict] = useState<Conflict | null>(null)
   const [createKind, setCreateKind] = useState<'file' | 'dir' | null>(null)
+  const [renameTarget, setRenameTarget] = useState<FsEntry | null>(null)
   const [createBusy, setCreateBusy] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [treeVersion, setTreeVersion] = useState(0)
@@ -629,7 +648,7 @@ export default function App(): JSX.Element {
 
   const openFind = useCallback(() => {
     const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
-    if (!tab) return
+    if (!tab || isExcalidrawFile(tab.path)) return
     if (tab.editing || !isMarkdownFile(tab.path) || isLargeDoc(tab.content.length)) {
       editorHandle.current?.openSearch()
       return
@@ -646,7 +665,7 @@ export default function App(): JSX.Element {
 
   const toggleSearch = useCallback(() => {
     const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
-    if (!tab) return
+    if (!tab || isExcalidrawFile(tab.path)) return
     if (tab.editing || !isMarkdownFile(tab.path) || isLargeDoc(tab.content.length)) {
       editorHandle.current?.openSearch()
       return
@@ -741,6 +760,7 @@ export default function App(): JSX.Element {
       }
       setCreateError(null)
       setCreateBusy(false)
+      setRenameTarget(null)
       setCreateKind(kind)
     },
     [collapsed, updateSettings]
@@ -773,10 +793,115 @@ export default function App(): JSX.Element {
 
   const cancelCreate = useCallback(() => {
     setCreateKind(null)
+    setRenameTarget(null)
     setCreateBaseDir(null)
     setCreateError(null)
     setCreateBusy(false)
   }, [])
+
+  const startRename = useCallback(
+    (entry: FsEntry) => {
+      setCreateKind(null)
+      setCreateBaseDir(dirnameOf(entry.path))
+      setCreateError(null)
+      setCreateBusy(false)
+      setRenameTarget(entry)
+      setSidebarTab('files')
+      if (collapsed) {
+        setCollapsed(false)
+        void updateSettings({ sidebarCollapsed: false })
+      }
+    },
+    [collapsed, updateSettings]
+  )
+
+  const applyRename = useCallback(
+    (oldPath: string, newPath: string) => {
+      const rewrite = (value: string): string => rebaseUnder(value, oldPath, newPath)
+
+      const pairs = tabsRef.current
+        .map((tab) => [tab.path, rewrite(tab.path)] as const)
+        .filter(([from, to]) => from !== to)
+      if (pairs.length) {
+        const byPath = new Map(pairs)
+        setTabs((prev) =>
+          prev.map((tab) => {
+            const next = byPath.get(tab.path)
+            if (!next) return tab
+            const migrated = { ...tab, path: next, name: basenameOf(next), root: dirnameOf(next) }
+            // 跨类型改名后旧草稿不再适用（Markdown 草稿喂不进画板解析器，反之亦然）。
+            if (isExcalidrawFile(tab.path) !== isExcalidrawFile(next)) {
+              migrated.draft = null
+              migrated.editing = false
+            }
+            return migrated
+          })
+        )
+        for (const [from, to] of pairs) {
+          const ratio = scrollMap.current.get(from)
+          if (ratio === undefined) continue
+          scrollMap.current.delete(from)
+          scrollMap.current.set(to, ratio)
+        }
+        const activeNext = activeIdRef.current ? byPath.get(activeIdRef.current) : undefined
+        if (activeNext) setActiveId(activeNext)
+      }
+
+      if (rootsRef.current.some((root) => rewrite(root) !== root)) {
+        const next = rootsRef.current.map(rewrite)
+        rootsRef.current = next
+        setRoots(next)
+      }
+
+      setExpandedDirs((previous) => {
+        let next: Set<string> | null = null
+        for (const dir of previous) {
+          const rewritten = rewrite(dir)
+          if (rewritten === dir) continue
+          next ??= new Set(previous)
+          next.delete(dir)
+          next.add(rewritten)
+        }
+        return next ?? previous
+      })
+
+      const current = settingsRef.current
+      const hiddenTreePaths = current.hiddenTreePaths.map(rewrite)
+      const recents = current.recents.map((item) => {
+        const path = rewrite(item.path)
+        return path === item.path ? item : { ...item, path, name: basenameOf(path) }
+      })
+      const changed =
+        hiddenTreePaths.some((path, index) => path !== current.hiddenTreePaths[index]) ||
+        recents.some((item, index) => item !== current.recents[index])
+      if (changed) void updateSettings({ hiddenTreePaths, recents })
+
+      setTreeVersion((value) => value + 1)
+    },
+    [setActiveId, setExpandedDirs, setRoots, setTabs, updateSettings]
+  )
+
+  const submitRename = useCallback(
+    async (name: string) => {
+      const target = renameTarget
+      if (!target) return
+      setCreateBusy(true)
+      setCreateError(null)
+      const result = await window.mdv.renameEntry({ path: target.path, name }).catch((err) => ({
+        ok: false as const,
+        message: errorMessage(err)
+      }))
+      setCreateBusy(false)
+      if (!result.ok || !result.path) {
+        setCreateError(result.message ?? '重命名失败')
+        return
+      }
+      setRenameTarget(null)
+      setCreateBaseDir(null)
+      applyRename(target.path, result.path)
+    },
+    [applyRename, renameTarget]
+  )
 
   const toggleDir = useCallback((path: string) => {
     setExpandedDirs((previous) => {
@@ -909,7 +1034,7 @@ export default function App(): JSX.Element {
 
   const selectAllContent = useCallback(() => {
     const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
-    if (!tab) return
+    if (!tab || isExcalidrawFile(tab.path)) return
     const editorShown =
       !isMarkdownFile(tab.path) || tab.editing || docTier(tab.content.length) !== 'normal'
     if (editorShown) {
@@ -1159,6 +1284,9 @@ export default function App(): JSX.Element {
         event.preventDefault()
         commandRef.current('toggle-edit')
       } else if (key === 'a') {
+        const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
+        // 画板的全选由 Excalidraw 自己处理，这里连 preventDefault 都不能做。
+        if (tab && isExcalidrawFile(tab.path)) return
         const target = event.target as HTMLElement | null
         if (target?.closest?.('input, textarea, [contenteditable="true"]')) return
         event.preventDefault()
@@ -1201,6 +1329,7 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const needsEditor =
       !!active &&
+      !isExcalidrawFile(active.path) &&
       (active.editing || !isMarkdownFile(active.path) || isLargeDoc(active.content.length))
     if (!needsEditor) {
       editorHandle.current = null
@@ -1313,6 +1442,7 @@ export default function App(): JSX.Element {
     : ''
 
   const activeIsMd = active ? isMarkdownFile(active.path) : false
+  const activeIsDrawing = active ? isExcalidrawFile(active.path) : false
   const activeTier = active ? docTier(active.content.length) : 'normal'
   const activeLite = activeTier !== 'normal'
   const activeHuge = activeTier === 'huge'
@@ -1322,32 +1452,41 @@ export default function App(): JSX.Element {
   }, [active?.content, activeLite])
   const mdAsSource = activeIsMd && activeLite
   const showPreview = !!active && activeIsMd && !active.editing && !mdAsSource
-  const showEditor = !!active && (!activeIsMd || mdAsSource || active.editing)
-  const codeReadOnly = !!active && !active.editing && (!activeIsMd || mdAsSource)
+  const showEditor = !!active && !activeIsDrawing && (!activeIsMd || mdAsSource || active.editing)
+  const codeReadOnly = !!active && !activeIsDrawing && !active.editing && (!activeIsMd || mdAsSource)
+  const showDrawing = !!active && activeIsDrawing
 
   const statusLeft = !active
     ? ''
-    : activeLite
-      ? `${active.name} · 大文件模式${
-          active.editing
-            ? `${dirty ? ' · 未保存的修改' : ''}${
-                active.externalChanged ? ' · 文件已在外部修改' : ''
-              }`
-            : ' · 只读'
-        }`
-      : codeReadOnly
-        ? `${active.name} · 只读`
-        : `${dirty ? '未保存的修改' : '已保存'}${
-            active.externalChanged ? ' · 文件已在外部修改' : ''
+    : activeIsDrawing
+      ? `${active.name} · 画板${active.editing ? '' : ' · 只读'}${
+          dirty ? ' · 未保存的修改' : ''
+        }${active.externalChanged ? ' · 文件已在外部修改' : ''}`
+      : activeLite
+        ? `${active.name} · 大文件模式${
+            active.editing
+              ? `${dirty ? ' · 未保存的修改' : ''}${
+                  active.externalChanged ? ' · 文件已在外部修改' : ''
+                }`
+              : ' · 只读'
           }`
+        : codeReadOnly
+          ? `${active.name} · 只读`
+          : `${dirty ? '未保存的修改' : '已保存'}${
+              active.externalChanged ? ' · 文件已在外部修改' : ''
+            }`
 
-  const statusRight = activeLite
+  const statusRight = activeIsDrawing
     ? active?.editing
-      ? 'Ctrl+S 保存 · Ctrl+E 阅读 · Ctrl+F 在编辑器内查找'
-      : 'Ctrl+E 编辑 · Ctrl+F 查找'
-    : codeReadOnly
-      ? 'Ctrl+E 编辑 · Ctrl+F 查找'
-      : 'Ctrl+S 保存 · Ctrl+E 阅读 · Ctrl+F 在编辑器内查找'
+      ? 'Ctrl+S 保存 · Ctrl+E 阅读'
+      : 'Ctrl+E 编辑'
+    : activeLite
+      ? active?.editing
+        ? 'Ctrl+S 保存 · Ctrl+E 阅读 · Ctrl+F 在编辑器内查找'
+        : 'Ctrl+E 编辑 · Ctrl+F 查找'
+      : codeReadOnly
+        ? 'Ctrl+E 编辑 · Ctrl+F 查找'
+        : 'Ctrl+S 保存 · Ctrl+E 阅读 · Ctrl+F 在编辑器内查找'
 
   const tabInfos: TabInfo[] = tabs.map((tab) => ({
     path: tab.path,
@@ -1400,13 +1539,18 @@ export default function App(): JSX.Element {
           onCreateIn={handleTreeCreate}
           onReveal={handleReveal}
           onTrash={requestTrash}
+          onRename={startRename}
           onHideEntry={hideTreeEntry}
           onPickHidden={openHiddenPicker}
           onRemoveRoot={removeRoot}
           onResizeCommit={persistSidebarWidth}
         />
 
-        <div className={`main${active?.editing ? ' editing' : ''}${showEditor ? ' has-editor' : ''}`}>
+        <div
+          className={`main${active?.editing ? ' editing' : ''}${
+            showEditor || showDrawing ? ' has-editor' : ''
+          }`}
+        >
           <TabBar
             tabs={tabInfos}
             activePath={active?.path ?? null}
@@ -1506,6 +1650,32 @@ export default function App(): JSX.Element {
             ) : null}
           </div>
 
+          {showDrawing && active ? (
+            <div className="editor-pane">
+              <Suspense fallback={<div className="editor-fallback">正在加载画板…</div>}>
+                <ExcalidrawPane
+                  key={active.path}
+                  content={active.content}
+                  draft={active.draft}
+                  editing={active.editing}
+                  theme={theme}
+                  onChange={(next) => updateTab(active.path, { draft: next })}
+                />
+              </Suspense>
+              <div className="editor-status">
+                <span>{statusLeft}</span>
+                <span className="status-actions">
+                  {statusRight}
+                  {activeHuge && !active.editing ? (
+                    <button type="button" className="mini-btn" onClick={toggleEdit}>
+                      启用编辑
+                    </button>
+                  ) : null}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
           {showEditor && active ? (
             <div className="editor-pane">
               <Suspense fallback={<div className="editor-fallback">正在加载编辑器…</div>}>
@@ -1543,7 +1713,13 @@ export default function App(): JSX.Element {
               <button
                 type="button"
                 className={`float-btn${active.editing ? ' active' : ''}`}
-                title={activeIsMd ? '编辑 Markdown (Ctrl+E)' : '编辑文本 (Ctrl+E)'}
+                title={
+                  activeIsDrawing
+                    ? '编辑画板 (Ctrl+E)'
+                    : activeIsMd
+                      ? '编辑 Markdown (Ctrl+E)'
+                      : '编辑文本 (Ctrl+E)'
+                }
                 aria-pressed={active.editing}
                 onClick={() => {
                   if (!active.editing) toggleEdit()
@@ -1562,25 +1738,29 @@ export default function App(): JSX.Element {
               >
                 <EyeIcon />
               </button>
-              <button
-                type="button"
-                className={`float-btn${active.searchOpen ? ' active' : ''}`}
-                title="查找 (Ctrl+F)"
-                aria-pressed={active.searchOpen}
-                onClick={toggleSearch}
-              >
-                <SearchIcon />
-              </button>
-              <WidthControl
-                open={widthOpen}
-                width={contentWidth}
-                min={MIN_CONTENT_WIDTH}
-                max={MAX_CONTENT_WIDTH}
-                onToggle={toggleWidthPanel}
-                onChange={setContentWidth}
-                onCommit={persistWidth}
-                onClose={closeWidthPanel}
-              />
+              {activeIsDrawing ? null : (
+                <>
+                  <button
+                    type="button"
+                    className={`float-btn${active.searchOpen ? ' active' : ''}`}
+                    title="查找 (Ctrl+F)"
+                    aria-pressed={active.searchOpen}
+                    onClick={toggleSearch}
+                  >
+                    <SearchIcon />
+                  </button>
+                  <WidthControl
+                    open={widthOpen}
+                    width={contentWidth}
+                    min={MIN_CONTENT_WIDTH}
+                    max={MAX_CONTENT_WIDTH}
+                    onToggle={toggleWidthPanel}
+                    onChange={setContentWidth}
+                    onCommit={persistWidth}
+                    onClose={closeWidthPanel}
+                  />
+                </>
+              )}
             </div>
           ) : null}
         </div>
@@ -1667,13 +1847,15 @@ export default function App(): JSX.Element {
       />
 
       <NewEntryDialog
-        open={createKind !== null}
-        kind={createKind ?? 'file'}
-        dir={createKind ? createTargetDir() : null}
+        open={createKind !== null || renameTarget !== null}
+        kind={renameTarget ? (renameTarget.isDir ? 'dir' : 'file') : (createKind ?? 'file')}
+        dir={createKind || renameTarget ? createTargetDir() : null}
         defaultExt={settings.newFileExt}
+        mode={renameTarget ? 'rename' : 'create'}
+        currentName={renameTarget?.name}
         busy={createBusy}
         error={createError}
-        onSubmit={(name) => void submitCreate(name)}
+        onSubmit={(name) => void (renameTarget ? submitRename(name) : submitCreate(name))}
         onCancel={cancelCreate}
       />
 

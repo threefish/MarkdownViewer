@@ -10,10 +10,12 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 const api: MdvApi = {
   openDialog: (mode) => ipcRenderer.invoke('dialog:open', mode),
   readDoc: (path) => ipcRenderer.invoke('doc:read', path),
+  readScene: (path) => ipcRenderer.invoke('scene:read', path),
   unwatchDoc: (path) => ipcRenderer.invoke('doc:unwatch', path),
   writeDoc: (payload) => ipcRenderer.invoke('doc:write', payload),
   listDir: (dir) => ipcRenderer.invoke('fs:list', dir),
   createEntry: (payload) => ipcRenderer.invoke('fs:create', payload),
+  renameEntry: (payload) => ipcRenderer.invoke('fs:rename', payload),
   trashPath: (path) => ipcRenderer.invoke('fs:trash', path),
   revealPath: (path) => ipcRenderer.invoke('fs:reveal', path),
   searchTree: (root, query) => ipcRenderer.invoke('fs:search', root, query),

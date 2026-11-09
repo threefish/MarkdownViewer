@@ -14,6 +14,9 @@ import type { Schema } from 'hast-util-sanitize'
 import type { ThemeMode } from '../../../shared/types'
 import { ImageLightbox } from '../components/ImageLightbox'
 import { MermaidBlock } from '../components/MermaidBlock'
+import { ExcalidrawEmbed } from '../components/ExcalidrawEmbed'
+import { markExcalidrawEmbeds, SCENE_PATH } from './rehypeExcalidrawEmbeds'
+import { remarkExcalidrawWiki } from './remarkExcalidrawWiki'
 import { rewriteLocalImages } from './rewriteUrls'
 import { stripFrontmatter } from './text'
 
@@ -31,7 +34,7 @@ const schema: Schema = {
     td: [...(defaultSchema.attributes?.td ?? []), 'align'],
     code: [...(defaultSchema.attributes?.code ?? []), 'className'],
     pre: [...(defaultSchema.attributes?.pre ?? []), 'className'],
-    span: [...(defaultSchema.attributes?.span ?? []), 'className'],
+    span: [...(defaultSchema.attributes?.span ?? []), 'className', SCENE_PATH],
     div: [...(defaultSchema.attributes?.div ?? []), 'className'],
     input: ['type', 'checked', 'disabled', TASK_LINE],
     details: ['open']
@@ -43,7 +46,7 @@ const schema: Schema = {
   }
 }
 
-const remarkPlugins: PluggableList = [remarkGfm, [remarkMath]]
+const remarkPlugins: PluggableList = [remarkGfm, [remarkMath], remarkExcalidrawWiki]
 
 function isTaskListItem(node: Element): boolean {
   const className = node.properties?.className
@@ -158,6 +161,7 @@ export function MarkdownDocument({
   const rehypePlugins = useMemo<PluggableList>(
     () => [
       rehypeRaw,
+      [markExcalidrawEmbeds, { baseDir }],
       [rewriteLocalImages, { baseDir }],
       markTaskCheckboxLines,
       [rehypeSanitize, schema],
@@ -210,6 +214,15 @@ export function MarkdownDocument({
           }}
         />
       ),
+      span: ({ node, children, ...rest }) => {
+        const className = node?.properties?.className
+        const names = Array.isArray(className) ? className : [className]
+        const scene = node?.properties?.[SCENE_PATH]
+        if (names.some((name) => String(name) === 'excalidraw-embed') && typeof scene === 'string') {
+          return <ExcalidrawEmbed path={scene} theme={theme} onOpen={onLink} />
+        }
+        return <span {...rest}>{children}</span>
+      },
       table: ({ node: _node, children, ...rest }) => (
         <div className="table-wrap">
           <table {...rest}>{children}</table>

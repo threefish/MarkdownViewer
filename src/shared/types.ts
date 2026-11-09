@@ -110,6 +110,12 @@ export interface TrashResult {
   message?: string
 }
 
+export interface RenameEntryResult {
+  ok: boolean
+  path?: string
+  message?: string
+}
+
 export interface SearchHit {
   line: number
   text: string
@@ -131,6 +137,7 @@ export interface SearchResult {
 export interface MdvApi {
   openDialog(mode: 'file' | 'folder'): Promise<string | null>
   readDoc(path: string): Promise<DocPayload>
+  readScene(path: string): Promise<DocPayload>
   unwatchDoc(path: string): Promise<void>
   writeDoc(payload: {
     path: string
@@ -140,6 +147,7 @@ export interface MdvApi {
   }): Promise<WriteResult>
   listDir(dir: string): Promise<FsEntry[]>
   createEntry(payload: { dir: string; name: string; kind: 'file' | 'dir' }): Promise<CreateEntryResult>
+  renameEntry(payload: { path: string; name: string }): Promise<RenameEntryResult>
   trashPath(path: string): Promise<TrashResult>
   revealPath(path: string): Promise<void>
   searchTree(root: string, query: string): Promise<SearchResult>

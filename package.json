@@ -8,7 +8,7 @@
   "private": true,
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && electron-vite build",
+    "build": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && electron-vite build && node scripts/copy-excalidraw-assets.mjs",
     "pack": "npm run build && electron-builder --win --x64",
     "zip": "powershell -NoProfile -Command \"Compress-Archive -Path 'release/win-unpacked/*' -DestinationPath 'release/md-viewer-0.1.0-win-x64.zip' -Force\""
   },
@@ -32,6 +32,7 @@
     "@codemirror/search": "^6.7.2",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.15",
+    "@excalidraw/excalidraw": "^0.18.1",
     "@lezer/highlight": "^1.2.5",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",

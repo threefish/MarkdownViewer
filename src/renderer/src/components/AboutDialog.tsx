@@ -20,7 +20,8 @@ const SHORTCUT_COLUMNS: ShortcutGroup[][] = [
         { keys: [['Ctrl', 'S']], label: '保存当前文件' },
         { keys: [['Ctrl', 'W']], label: '关闭标签页' },
         { keys: [['Ctrl', 'Tab']], label: '下一个标签页' },
-        { keys: [['Ctrl', 'Shift', 'Tab']], label: '上一个标签页' }
+        { keys: [['Ctrl', 'Shift', 'Tab']], label: '上一个标签页' },
+        { keys: [['F2']], label: '重命名文件树选中项' }
       ]
     },
     {
@@ -165,8 +166,8 @@ export function AboutDialog({ open, version, onClose }: Props): React.JSX.Elemen
         </header>
         <div className="about-scroll">
           <p className="about-desc">
-            本地 Markdown 阅读与编辑器，支持 GFM、KaTeX 公式与 Mermaid
-            图表，也可查看和编辑常见文本与代码文件。
+            本地 Markdown 阅读与编辑器，支持 GFM、KaTeX 公式、Mermaid 图表与 Excalidraw
+            画板（可新建、编辑，并在 Markdown 中嵌入预览），也可查看和编辑常见文本与代码文件。
           </p>
           <h3 className="about-section-title">键盘快捷键</h3>
           <div className="shortcut-grid">
