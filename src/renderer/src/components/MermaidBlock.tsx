@@ -28,16 +28,19 @@ function diagramTitle(code: string): string {
 }
 
 // 预览浮层为深色底，给 SVG 铺主题底色并按 viewBox 设定固有尺寸，保证浅色主题可读且缩放正确。
+// Mermaid 的 HTML 标签会输出 <br> 等非 XML 闭合标签，这里用 HTML 解析取根 <svg>，避免 XML 解析失败。
 function previewSvg(svg: string, theme: ThemeMode): string {
-  const root = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement
-  if (root.nodeName === 'parsererror') return svg
+  const holder = document.createElement('div')
+  holder.innerHTML = svg
+  const root = holder.querySelector('svg')
+  if (!root) return svg
   const box = (root.getAttribute('viewBox') ?? '').trim().split(/[\s,]+/).map(Number)
   if (box.length === 4 && box[2] > 0 && box[3] > 0) {
     root.setAttribute('width', String(box[2]))
     root.setAttribute('height', String(box[3]))
   }
   root.setAttribute('style', `background:${themeBackground(theme)}`)
-  return root.outerHTML
+  return holder.innerHTML
 }
 
 interface Props {
