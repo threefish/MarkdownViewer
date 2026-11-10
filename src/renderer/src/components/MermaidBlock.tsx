@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ThemeMode } from '../../../shared/types'
 import { isDarkTheme, themeBackground } from '../../../shared/themes'
+import { ScenePreview } from './ScenePreview'
 
 let counter = 0
 let loader: Promise<(typeof import('mermaid'))['default']> | null = null
@@ -8,6 +9,35 @@ let loader: Promise<(typeof import('mermaid'))['default']> | null = null
 function loadMermaid(): Promise<(typeof import('mermaid'))['default']> {
   if (!loader) loader = import('mermaid').then((mod) => mod.default)
   return loader
+}
+
+function diagramTitle(code: string): string {
+  const head = (code.trim().split(/\s+/)[0] ?? '').toLowerCase()
+  if (head.startsWith('flowchart') || head.startsWith('graph')) return '流程图'
+  if (head.startsWith('sequencediagram')) return '时序图'
+  if (head.startsWith('classdiagram')) return '类图'
+  if (head.startsWith('statediagram')) return '状态图'
+  if (head.startsWith('erdiagram')) return 'ER 图'
+  if (head.startsWith('gantt')) return '甘特图'
+  if (head.startsWith('pie')) return '饼图'
+  if (head.startsWith('journey')) return '旅程图'
+  if (head.startsWith('mindmap')) return '思维导图'
+  if (head.startsWith('timeline')) return '时间线'
+  if (head.startsWith('gitgraph')) return 'Git 图'
+  return 'Mermaid 图表'
+}
+
+// 预览浮层为深色底，给 SVG 铺主题底色并按 viewBox 设定固有尺寸，保证浅色主题可读且缩放正确。
+function previewSvg(svg: string, theme: ThemeMode): string {
+  const root = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement
+  if (root.nodeName === 'parsererror') return svg
+  const box = (root.getAttribute('viewBox') ?? '').trim().split(/[\s,]+/).map(Number)
+  if (box.length === 4 && box[2] > 0 && box[3] > 0) {
+    root.setAttribute('width', String(box[2]))
+    root.setAttribute('height', String(box[3]))
+  }
+  root.setAttribute('style', `background:${themeBackground(theme)}`)
+  return root.outerHTML
 }
 
 interface Props {
@@ -20,6 +50,7 @@ export function MermaidBlock({ code, theme }: Props): React.JSX.Element {
   const [visible, setVisible] = useState(false)
   const [svg, setSvg] = useState('')
   const [error, setError] = useState('')
+  const [preview, setPreview] = useState<string | null>(null)
 
   useEffect(() => {
     const element = hostRef.current
@@ -83,22 +114,43 @@ export function MermaidBlock({ code, theme }: Props): React.JSX.Element {
     }
   }, [visible, code, theme])
 
+  const open = (): void => {
+    if (svg) setPreview(previewSvg(svg, theme))
+  }
+
   return (
-    <div className="mermaid-block" ref={hostRef}>
-      {error ? (
-        <div className="mermaid-error">
-          <div className="mermaid-error-title">图表渲染失败</div>
-          <pre className="mermaid-error-message">{error}</pre>
-          <details>
-            <summary>查看源码</summary>
-            <pre className="mermaid-error-source">{code}</pre>
-          </details>
-        </div>
-      ) : svg ? (
-        <div className="mermaid-svg" dangerouslySetInnerHTML={{ __html: svg }} />
-      ) : (
-        <div className="mermaid-placeholder">正在绘制图表…</div>
-      )}
-    </div>
+    <>
+      <div className="mermaid-block" ref={hostRef}>
+        {error ? (
+          <div className="mermaid-error">
+            <div className="mermaid-error-title">图表渲染失败</div>
+            <pre className="mermaid-error-message">{error}</pre>
+            <details>
+              <summary>查看源码</summary>
+              <pre className="mermaid-error-source">{code}</pre>
+            </details>
+          </div>
+        ) : svg ? (
+          <div
+            className="mermaid-svg"
+            role="button"
+            tabIndex={0}
+            title="点击预览图表"
+            onClick={open}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return
+              event.preventDefault()
+              open()
+            }}
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+        ) : (
+          <div className="mermaid-placeholder">正在绘制图表…</div>
+        )}
+      </div>
+      {preview ? (
+        <ScenePreview svg={preview} name={diagramTitle(code)} onClose={() => setPreview(null)} />
+      ) : null}
+    </>
   )
 }

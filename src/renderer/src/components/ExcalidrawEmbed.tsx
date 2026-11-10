@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ThemeMode } from '../../../shared/types'
 import { isDarkTheme } from '../../../shared/themes'
 import { errorMessage } from '../lib/text'
+import { ScenePreview } from './ScenePreview'
 
 let loader: Promise<typeof import('@excalidraw/excalidraw')> | null = null
 
@@ -16,19 +17,21 @@ interface Props {
   path: string
   theme: ThemeMode
   onOpen: (href: string) => void
+  onEdit: (path: string) => void
 }
 
 function samePath(a: string, b: string): boolean {
   return a.replace(/\//g, '\\').toLowerCase() === b.replace(/\//g, '\\').toLowerCase()
 }
 
-export function ExcalidrawEmbed({ path, theme, onOpen }: Props): React.JSX.Element {
+export function ExcalidrawEmbed({ path, theme, onOpen, onEdit }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLSpanElement>(null)
   const [visible, setVisible] = useState(false)
   const [svg, setSvg] = useState('')
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
   const [revision, setRevision] = useState(0)
+  const [preview, setPreview] = useState<string | null>(null)
 
   useEffect(() => {
     const element = hostRef.current
@@ -124,31 +127,48 @@ export function ExcalidrawEmbed({ path, theme, onOpen }: Props): React.JSX.Eleme
     }
   }, [visible, path, theme, revision])
 
-  const open = (): void => onOpen(path)
+  const name = path.split(/[\\/]/).pop() || path
+  const open = (): void => {
+    if (svg) setPreview(svg)
+    else onOpen(path)
+  }
 
   return (
-    <span
-      className="excalidraw-embed"
-      ref={hostRef}
-      role="button"
-      tabIndex={0}
-      title="点击打开画板"
-      onClick={open}
-      onKeyDown={(event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return
-        event.preventDefault()
-        open()
-      }}
-    >
-      {error ? (
-        <span className="excalidraw-embed-error">{error}</span>
-      ) : note ? (
-        <span className="excalidraw-embed-note">{note}</span>
-      ) : svg ? (
-        <span className="excalidraw-embed-svg" dangerouslySetInnerHTML={{ __html: svg }} />
-      ) : (
-        <span className="excalidraw-embed-note">正在渲染画板…</span>
-      )}
-    </span>
+    <>
+      <span
+        className="excalidraw-embed"
+        ref={hostRef}
+        role="button"
+        tabIndex={0}
+        title={svg ? '点击预览画板' : '点击打开画板'}
+        onClick={open}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          open()
+        }}
+      >
+        {error ? (
+          <span className="excalidraw-embed-error">{error}</span>
+        ) : note ? (
+          <span className="excalidraw-embed-note">{note}</span>
+        ) : svg ? (
+          <span className="excalidraw-embed-svg" dangerouslySetInnerHTML={{ __html: svg }} />
+        ) : (
+          <span className="excalidraw-embed-note">正在渲染画板…</span>
+        )}
+      </span>
+      {preview ? (
+        <ScenePreview
+          svg={preview}
+          name={name}
+          onEdit={() => {
+            setPreview(null)
+            onEdit(path)
+          }}
+          onClose={() => setPreview(null)}
+        />
+      ) : null}
+    </>
   )
 }

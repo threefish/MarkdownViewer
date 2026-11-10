@@ -454,6 +454,38 @@ input:focus-visible {
   border-bottom: 1px solid var(--border);
 }
 
+.tabbar-nav {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  border-right: 1px solid var(--border);
+}
+
+.tabbar-nav-btn {
+  width: 30px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.tabbar-nav-btn:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.tabbar-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.tabbar-nav-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
 .tabbar-tabs {
   flex: 1 1 auto;
   min-width: 0;
@@ -462,9 +494,7 @@ input:focus-visible {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-}
-
-.tabbar-tabs::-webkit-scrollbar {
+}.tabbar-tabs::-webkit-scrollbar {
   height: 0;
 }
 
@@ -2534,6 +2564,57 @@ body.settings-resizing .settings-resizer::after {
 
 .lightbox-image.dragging {
   cursor: grabbing;
+}
+
+.scene-preview-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+  will-change: transform;
+}
+
+.scene-preview-stage.dragging {
+  cursor: grabbing;
+}
+
+.scene-preview-stage svg {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 88vw;
+  max-height: 80vh;
+  border-radius: 4px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.scene-preview-edit {
+  position: fixed;
+  top: 16px;
+  right: 64px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12.5px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  transition: filter 0.12s ease;
+}
+
+.scene-preview-edit:hover {
+  filter: brightness(1.08);
+}
+
+.scene-preview-edit svg {
+  width: 15px;
+  height: 15px;
 }
 
 .lightbox-hint {

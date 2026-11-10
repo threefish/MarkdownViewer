@@ -282,6 +282,18 @@
   width: 100%;
   overflow-x: auto;
   text-align: center;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.mermaid-svg:hover {
+  border-color: var(--accent);
+}
+
+.mermaid-svg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .mermaid-svg svg {
@@ -350,13 +362,14 @@
   margin: 1.7em 0;
   max-width: 100%;
   overflow-x: auto;
+  border: 1px solid transparent;
   border-radius: 8px;
   text-align: center;
   cursor: pointer;
 }
 
 .markdown-body .excalidraw-embed:hover {
-  background: var(--hover);
+  border-color: var(--accent);
 }
 
 .markdown-body .excalidraw-embed:focus-visible {

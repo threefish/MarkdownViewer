@@ -201,6 +201,7 @@ export default function App(): JSX.Element {
   const [trashTarget, setTrashTarget] = useState<FsEntry | null>(null)
   const [createBaseDir, setCreateBaseDir] = useState<string | null>(null)
   const [hugeEdit, setHugeEdit] = useState<{ path: string; name: string } | null>(null)
+  const [navState, setNavState] = useState({ canBack: false, canForward: false })
 
   const tabsRef = useRef<DocTab[]>([])
   const activeIdRef = useRef<string | null>(null)
@@ -213,6 +214,8 @@ export default function App(): JSX.Element {
   const scrollMap = useRef(new Map<string, number>())
   const pendingPrompt = useRef<Prompt | null>(null)
   const commandRef = useRef<(action: MenuAction, payload?: string) => void>(() => {})
+  const navRef = useRef<{ list: string[]; index: number }>({ list: [], index: -1 })
+  const navJumpRef = useRef(false)
 
   const setTabs = useCallback((updater: (prev: DocTab[]) => DocTab[]) => {
     const next = updater(tabsRef.current)
@@ -224,6 +227,29 @@ export default function App(): JSX.Element {
     activeIdRef.current = id
     setActiveIdState(id)
   }, [])
+
+  const syncNav = useCallback(() => {
+    const state = navRef.current
+    setNavState({
+      canBack: state.index > 0,
+      canForward: state.index < state.list.length - 1
+    })
+  }, [])
+
+  // 文档历史只记录真正切到的文档；恢复会话不算，返回/前进自身也不重复入栈。
+  useEffect(() => {
+    if (!restoredRef.current || !activeId) return
+    if (navJumpRef.current) {
+      navJumpRef.current = false
+      return
+    }
+    const state = navRef.current
+    if (state.list[state.index] === activeId) return
+    const list = [...state.list.slice(0, state.index + 1), activeId]
+    state.list = list.length > 100 ? list.slice(list.length - 100) : list
+    state.index = state.list.length - 1
+    syncNav()
+  }, [activeId, restoreTick, syncNav])
 
   const updateTab = useCallback(
     (path: string, patch: Partial<DocTab> | ((tab: DocTab) => Partial<DocTab>)) => {
@@ -380,6 +406,27 @@ export default function App(): JSX.Element {
     [revealFile, setActiveId, updateTab]
   )
 
+  const goNav = useCallback(
+    (delta: -1 | 1) => {
+      const state = navRef.current
+      let index = state.index + delta
+      while (index >= 0 && index < state.list.length) {
+        const path = state.list[index]
+        const tab = tabsRef.current.find((item) => samePath(item.path, path))
+        if (tab) {
+          state.index = index
+          navJumpRef.current = true
+          activateTab(tab.path)
+          syncNav()
+          return
+        }
+        index += delta
+      }
+      syncNav()
+    },
+    [activateTab, syncNav]
+  )
+
   const openDoc = useCallback(
     async (
       path: string,
@@ -472,6 +519,19 @@ export default function App(): JSX.Element {
       const closing = new Set(paths)
       const list = tabsRef.current
       if (!list.some((tab) => closing.has(tab.path))) return
+      const nav = navRef.current
+      if (nav.list.some((path) => closing.has(path))) {
+        const kept: string[] = []
+        let index = -1
+        nav.list.forEach((path, at) => {
+          if (closing.has(path)) return
+          kept.push(path)
+          if (at <= nav.index) index = kept.length - 1
+        })
+        nav.list = kept
+        nav.index = index
+        syncNav()
+      }
       const index = activeIdRef.current
         ? list.findIndex((tab) => tab.path === activeIdRef.current)
         : -1
@@ -500,7 +560,7 @@ export default function App(): JSX.Element {
         void window.mdv.unwatchDoc(path)
       }
     },
-    [setActiveId, setTabs]
+    [setActiveId, setTabs, syncNav]
   )
 
   const closeTabNow = useCallback((path: string) => closeTabsNow([path]), [closeTabsNow])
@@ -845,6 +905,11 @@ export default function App(): JSX.Element {
         }
         const activeNext = activeIdRef.current ? byPath.get(activeIdRef.current) : undefined
         if (activeNext) setActiveId(activeNext)
+        const nav = navRef.current
+        if (nav.list.length) {
+          nav.list = nav.list.map(rewrite)
+          syncNav()
+        }
       }
 
       if (rootsRef.current.some((root) => rewrite(root) !== root)) {
@@ -878,7 +943,7 @@ export default function App(): JSX.Element {
 
       setTreeVersion((value) => value + 1)
     },
-    [setActiveId, setExpandedDirs, setRoots, setTabs, updateSettings]
+    [setActiveId, setExpandedDirs, setRoots, setTabs, updateSettings, syncNav]
   )
 
   const submitRename = useCallback(
@@ -1013,6 +1078,24 @@ export default function App(): JSX.Element {
       }
     },
     [openDoc, scrollToHeading]
+  )
+
+  const openSceneForEdit = useCallback(
+    async (path: string) => {
+      await openDoc(path)
+      const opened = tabsRef.current.find((tab) => samePath(tab.path, path))
+      if (!opened || opened.editing) return
+      if (docTier(opened.content.length) === 'huge' && !opened.largeEditOk) {
+        setHugeEdit({ path: opened.path, name: opened.name })
+        return
+      }
+      updateTab(opened.path, {
+        editing: true,
+        draft: opened.draft ?? opened.content,
+        searchOpen: false
+      })
+    },
+    [openDoc, updateTab]
   )
 
   const handleTaskToggle = useCallback(
@@ -1266,10 +1349,22 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (document.querySelector('.modal[aria-modal="true"]')) return
+      if (document.querySelector('.modal[aria-modal="true"], .lightbox[aria-modal="true"]')) return
       if (event.key === 'F5') {
         event.preventDefault()
         commandRef.current('reload')
+        return
+      }
+      if (
+        event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+      ) {
+        const target = event.target as HTMLElement | null
+        if (target?.closest?.('input, textarea, [contenteditable="true"]')) return
+        event.preventDefault()
+        goNav(event.key === 'ArrowLeft' ? -1 : 1)
         return
       }
       if (!event.ctrlKey && !event.metaKey) return
@@ -1316,7 +1411,7 @@ export default function App(): JSX.Element {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [activateTab])
+  }, [activateTab, goNav])
 
   useLayoutEffect(() => {
     const scroller = readerRef.current
@@ -1554,6 +1649,10 @@ export default function App(): JSX.Element {
           <TabBar
             tabs={tabInfos}
             activePath={active?.path ?? null}
+            canBack={navState.canBack}
+            canForward={navState.canForward}
+            onBack={() => goNav(-1)}
+            onForward={() => goNav(1)}
             onActivate={(path) => activateTab(path)}
             onClose={requestCloseTab}
             onClosePaths={requestClosePaths}
@@ -1622,6 +1721,7 @@ export default function App(): JSX.Element {
                       baseDir={active.root}
                       theme={theme}
                       onLink={handleLink}
+                      onEditScene={openSceneForEdit}
                       onTaskToggle={handleTaskToggle}
                     />
                   </article>

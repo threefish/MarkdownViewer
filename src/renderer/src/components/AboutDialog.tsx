@@ -21,6 +21,7 @@ const SHORTCUT_COLUMNS: ShortcutGroup[][] = [
         { keys: [['Ctrl', 'W']], label: '关闭标签页' },
         { keys: [['Ctrl', 'Tab']], label: '下一个标签页' },
         { keys: [['Ctrl', 'Shift', 'Tab']], label: '上一个标签页' },
+        { keys: [['Alt', '←'], ['Alt', '→']], label: '后退 / 前进' },
         { keys: [['F2']], label: '重命名文件树选中项' }
       ]
     },

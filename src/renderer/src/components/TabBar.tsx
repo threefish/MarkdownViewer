@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from 'react'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
-import { CloseIcon, PlusIcon } from './Icons'
+import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, PlusIcon } from './Icons'
 
 export interface TabInfo {
   path: string
@@ -11,6 +11,10 @@ export interface TabInfo {
 interface Props {
   tabs: TabInfo[]
   activePath: string | null
+  canBack: boolean
+  canForward: boolean
+  onBack: () => void
+  onForward: () => void
   onActivate: (path: string) => void
   onClose: (path: string) => void
   onClosePaths: (paths: string[]) => void
@@ -26,6 +30,10 @@ interface MenuState {
 export function TabBar({
   tabs,
   activePath,
+  canBack,
+  canForward,
+  onBack,
+  onForward,
   onActivate,
   onClose,
   onClosePaths,
@@ -101,6 +109,28 @@ export function TabBar({
   return (
     <>
       <div className="tabbar">
+        <div className="tabbar-nav">
+          <button
+            type="button"
+            className="tabbar-nav-btn"
+            title="返回 (Alt+←)"
+            aria-label="返回"
+            disabled={!canBack}
+            onClick={onBack}
+          >
+            <ChevronLeftIcon />
+          </button>
+          <button
+            type="button"
+            className="tabbar-nav-btn"
+            title="前进 (Alt+→)"
+            aria-label="前进"
+            disabled={!canForward}
+            onClick={onForward}
+          >
+            <ChevronRightIcon />
+          </button>
+        </div>
         <div
           className="tabbar-tabs"
           role="tablist"

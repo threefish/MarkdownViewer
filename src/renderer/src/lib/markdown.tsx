@@ -133,6 +133,7 @@ interface Props {
   baseDir: string
   theme: ThemeMode
   onLink: (href: string) => void
+  onEditScene?: (path: string) => void
   onTaskToggle?: (line: number, checked: boolean) => void
 }
 
@@ -141,6 +142,7 @@ export function MarkdownDocument({
   baseDir,
   theme,
   onLink,
+  onEditScene,
   onTaskToggle
 }: Props): React.JSX.Element {
   const { body, lineOffset } = useMemo(() => {
@@ -219,7 +221,14 @@ export function MarkdownDocument({
         const names = Array.isArray(className) ? className : [className]
         const scene = node?.properties?.[SCENE_PATH]
         if (names.some((name) => String(name) === 'excalidraw-embed') && typeof scene === 'string') {
-          return <ExcalidrawEmbed path={scene} theme={theme} onOpen={onLink} />
+          return (
+            <ExcalidrawEmbed
+              path={scene}
+              theme={theme}
+              onOpen={onLink}
+              onEdit={onEditScene ?? onLink}
+            />
+          )
         }
         return <span {...rest}>{children}</span>
       },
@@ -246,7 +255,7 @@ export function MarkdownDocument({
         </CodeBlock>
       )
     }),
-    [onLink, theme, lineOffset, onTaskToggle]
+    [onLink, onEditScene, theme, lineOffset, onTaskToggle]
   )
 
   return (
