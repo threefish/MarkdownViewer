@@ -147,3 +147,125 @@ export function unwatchAll(): void {
   for (const entry of entries.values()) closeEntry(entry)
   entries.clear()
 }
+
+// ---------- 目录级监听：文件树中展开的目录，增删/重命名时就地刷新 ----------
+
+interface DirHandlers {
+  changed: (dir: string) => void
+}
+
+interface DirWatch {
+  dir: string
+  handlers: DirHandlers
+  watcher: FSWatcher | null
+  timer: NodeJS.Timeout | null
+  refs: number
+}
+
+const dirWatches = new Map<string, DirWatch>()
+
+function dirKey(dir: string): string {
+  return path.resolve(dir).replace(/\\+$/, '').toLowerCase()
+}
+
+function closeDirWatch(watch: DirWatch): void {
+  if (watch.timer) {
+    clearTimeout(watch.timer)
+    watch.timer = null
+  }
+  if (watch.watcher) {
+    try {
+      watch.watcher.close()
+    } catch {
+      // ignore
+    }
+    watch.watcher = null
+  }
+}
+
+function attachDir(record: DirWatch): void {
+  try {
+    // 只关心 rename（新增/删除/改名）；内容写入是 change，不触发刷新。
+    record.watcher = watch(record.dir, { persistent: false }, (eventType) => {
+      if (eventType !== 'rename') return
+      scheduleDir(record)
+    })
+  } catch (err) {
+    console.error('[watcher] dir failed', err)
+  }
+}
+
+function scheduleDir(watch: DirWatch): void {
+  if (watch.timer) clearTimeout(watch.timer)
+  watch.timer = setTimeout(() => {
+    watch.timer = null
+    watch.handlers.changed(watch.dir)
+  }, 200)
+}
+
+export function watchDirectory(dir: string, handlers: DirHandlers): void {
+  const id = dirKey(dir)
+  const existing = dirWatches.get(id)
+  if (existing) {
+    existing.refs += 1
+    existing.handlers = handlers
+    if (!existing.watcher) attachDir(existing)
+    return
+  }
+  const entry: DirWatch = { dir, handlers, watcher: null, timer: null, refs: 1 }
+  dirWatches.set(id, entry)
+  attachDir(entry)
+}
+
+export function unwatchDirectory(dir: string): void {
+  const id = dirKey(dir)
+  const entry = dirWatches.get(id)
+  if (!entry) return
+  entry.refs -= 1
+  if (entry.refs > 0) return
+  closeDirWatch(entry)
+  dirWatches.delete(id)
+}
+
+function affectedDirs(target: string): DirWatch[] {
+  const fromKey = dirKey(target)
+  const prefix = `${fromKey}${path.sep.toLowerCase()}`
+  const list: DirWatch[] = []
+  for (const entry of dirWatches.values()) {
+    const lower = dirKey(entry.dir)
+    if (lower === fromKey || lower.startsWith(prefix)) list.push(entry)
+  }
+  return list
+}
+
+/** 重命名/删除目录前释放其（含子目录）句柄，Windows 才会允许操作。 */
+export function pauseWatchedDirs(target: string): void {
+  for (const entry of affectedDirs(target)) closeDirWatch(entry)
+}
+
+export function resumeWatchedDirs(target: string): void {
+  for (const entry of affectedDirs(target)) if (!entry.watcher) attachDir(entry)
+}
+
+/** 重命名目录后把监听迁移到新路径，避免误报或丢失刷新。 */
+export function renameWatchedDirs(oldPath: string, newPath: string): void {
+  const from = path.resolve(oldPath).replace(/\\+$/, '')
+  for (const entry of affectedDirs(oldPath)) {
+    const current = path.resolve(entry.dir)
+    const target =
+      current.toLowerCase() === from.toLowerCase()
+        ? newPath
+        : path.join(newPath, current.slice(from.length + 1))
+    closeDirWatch(entry)
+    dirWatches.delete(dirKey(entry.dir))
+    entry.dir = target
+    if (dirWatches.has(dirKey(target))) continue
+    dirWatches.set(dirKey(target), entry)
+    attachDir(entry)
+  }
+}
+
+export function unwatchAllDirs(): void {
+  for (const entry of dirWatches.values()) closeDirWatch(entry)
+  dirWatches.clear()
+}

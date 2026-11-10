@@ -174,6 +174,9 @@ interface Props {
   lite: boolean
   onChange: (next: string) => void
   onReady: (handle: EditorHandle) => void
+  onPasteImage?: (file: File) => Promise<string | null>
+  initialScrollLine?: number
+  onScrollLine?: (line: number) => void
 }
 
 function editorTheme(theme: ThemeMode): Extension {
@@ -496,12 +499,18 @@ export function Editor({
   readOnly,
   lite,
   onChange,
-  onReady
+  onReady,
+  onPasteImage,
+  initialScrollLine,
+  onScrollLine
 }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const changeRef = useRef(onChange)
   const readyRef = useRef(onReady)
+  const pasteImageRef = useRef(onPasteImage)
+  const scrollLineRef = useRef(onScrollLine)
+  const pasteModeRef = useRef({ language, readOnly })
   const themeCompartment = useRef(new Compartment())
   const wrapCompartment = useRef(new Compartment())
   const langCompartment = useRef(new Compartment())
@@ -541,6 +550,18 @@ export function Editor({
   }, [onChange])
 
   useEffect(() => {
+    pasteImageRef.current = onPasteImage
+  }, [onPasteImage])
+
+  useEffect(() => {
+    scrollLineRef.current = onScrollLine
+  }, [onScrollLine])
+
+  useEffect(() => {
+    pasteModeRef.current = { language, readOnly }
+  }, [language, readOnly])
+
+  useEffect(() => {
     readyRef.current = onReady
   }, [onReady])
 
@@ -570,6 +591,36 @@ export function Editor({
             ...foldKeymap,
             indentWithTab
           ]),
+          // 粘贴截图或剪贴板图片时拦截默认行为，交给 App 保存并在原选区插入链接；
+          // 只要剪贴板含图片就按图片处理（部分工具的截图会同时附带文本）。
+          EditorView.domEventHandlers({
+            paste: (event, view) => {
+              const mode = pasteModeRef.current
+              if (mode.language !== 'markdown' || mode.readOnly || view.state.readOnly) return false
+              const item = Array.from(event.clipboardData?.items ?? []).find(
+                (entry) => entry.kind === 'file' && entry.type.startsWith('image/')
+              )
+              const file = item?.getAsFile()
+              const handle = pasteImageRef.current
+              if (!file || !handle) return false
+              event.preventDefault()
+              const { from, to } = view.state.selection.main
+              void handle(file)
+                .then((snippet) => {
+                  if (!snippet || viewRef.current !== view || !view.dom.isConnected) return
+                  const start = Math.min(from, view.state.doc.length)
+                  const end = Math.min(to, view.state.doc.length)
+                  view.dispatch({
+                    changes: { from: start, to: end, insert: snippet },
+                    selection: { anchor: start + snippet.length },
+                    scrollIntoView: true
+                  })
+                  view.focus()
+                })
+                .catch(() => {})
+              return true
+            }
+          }),
           themeCompartment.current.of(editorTheme(theme)),
           EditorView.theme({ '&': { fontSize: 'var(--editor-size, 13.5px)' } }),
           EditorView.updateListener.of((update) => {
@@ -600,7 +651,31 @@ export function Editor({
         view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } })
       }
     })
+    let scrollFrame = 0
+    const trackScroll = (): void => {
+      if (scrollFrame) return
+      scrollFrame = window.requestAnimationFrame(() => {
+        scrollFrame = 0
+        if (!view.dom.isConnected) return
+        const pos = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from
+        scrollLineRef.current?.(view.state.doc.lineAt(pos).number)
+      })
+    }
+    view.scrollDOM.addEventListener('scroll', trackScroll, { passive: true })
+    if (initialScrollLine && initialScrollLine > 1) {
+      view.requestMeasure({
+        read: (target) =>
+          target.lineBlockAt(
+            target.state.doc.line(Math.min(initialScrollLine, target.state.doc.lines)).from
+          ).top,
+        write: (top, target) => {
+          if (top > 0) target.scrollDOM.scrollTop = top
+        }
+      })
+    }
     return () => {
+      window.cancelAnimationFrame(scrollFrame)
+      view.scrollDOM.removeEventListener('scroll', trackScroll)
       view.destroy()
       viewRef.current = null
     }

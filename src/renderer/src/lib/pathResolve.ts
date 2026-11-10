@@ -1,4 +1,4 @@
-import { isTextFile } from '../../../shared/fileKinds'
+import { isImageFile, isTextFile } from '../../../shared/fileKinds'
 
 export type HrefInfo =
   | { kind: 'none' }
@@ -98,6 +98,6 @@ export function classifyHref(baseDir: string, href: string): HrefInfo {
   }
   const path = resolveLocalPath(baseDir, hashIndex >= 0 ? raw.slice(0, hashIndex) : raw)
   if (!path) return { kind: 'none' }
-  if (isTextFile(path)) return { kind: 'doc', path, hash }
+  if (isTextFile(path) || isImageFile(path)) return { kind: 'doc', path, hash }
   return { kind: 'file', path }
 }

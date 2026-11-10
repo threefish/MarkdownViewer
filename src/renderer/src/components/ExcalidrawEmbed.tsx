@@ -18,15 +18,16 @@ interface Props {
   theme: ThemeMode
   onOpen: (href: string) => void
   onEdit: (path: string) => void
+  eager?: boolean
 }
 
 function samePath(a: string, b: string): boolean {
   return a.replace(/\//g, '\\').toLowerCase() === b.replace(/\//g, '\\').toLowerCase()
 }
 
-export function ExcalidrawEmbed({ path, theme, onOpen, onEdit }: Props): React.JSX.Element {
+export function ExcalidrawEmbed({ path, theme, onOpen, onEdit, eager }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLSpanElement>(null)
-  const [visible, setVisible] = useState(false)
+  const [visible, setVisible] = useState(eager ?? false)
   const [svg, setSvg] = useState('')
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
@@ -34,6 +35,7 @@ export function ExcalidrawEmbed({ path, theme, onOpen, onEdit }: Props): React.J
   const [preview, setPreview] = useState<string | null>(null)
 
   useEffect(() => {
+    if (eager) return
     const element = hostRef.current
     if (!element) return
     if (typeof IntersectionObserver === 'undefined') {
@@ -51,7 +53,7 @@ export function ExcalidrawEmbed({ path, theme, onOpen, onEdit }: Props): React.J
     )
     observer.observe(element)
     return () => observer.disconnect()
-  }, [])
+  }, [eager])
 
   useEffect(() => {
     return window.mdv.onDocChanged((payload) => {

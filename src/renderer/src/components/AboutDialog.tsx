@@ -18,9 +18,11 @@ const SHORTCUT_COLUMNS: ShortcutGroup[][] = [
         { keys: [['Ctrl', 'O']], label: '打开文件' },
         { keys: [['Ctrl', 'Shift', 'O']], label: '打开文件夹' },
         { keys: [['Ctrl', 'S']], label: '保存当前文件' },
+        { keys: [['Ctrl', 'P']], label: '导出 PDF' },
         { keys: [['Ctrl', 'W']], label: '关闭标签页' },
         { keys: [['Ctrl', 'Tab']], label: '下一个标签页' },
         { keys: [['Ctrl', 'Shift', 'Tab']], label: '上一个标签页' },
+        { keys: [['Ctrl', 'Shift', 'T']], label: '全部打开的文件列表' },
         { keys: [['Alt', '←'], ['Alt', '→']], label: '后退 / 前进' },
         { keys: [['F2']], label: '重命名文件树选中项' }
       ]

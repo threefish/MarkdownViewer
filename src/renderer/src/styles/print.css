@@ -1,0 +1,60 @@
+/* 仅隐藏打印窗口（html.print-mode）生效：解除活窗口的固定高度/滚动裁剪，让内容自然分页。 */
+
+html.print-mode,
+html.print-mode body,
+html.print-mode #root {
+  height: auto;
+  overflow: visible;
+}
+
+html.print-mode body {
+  margin: 0;
+  background: var(--bg);
+}
+
+html.print-mode .markdown-body {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+html.print-mode .code-block,
+html.print-mode .code-block pre,
+html.print-mode .table-wrap,
+html.print-mode .katex-display,
+html.print-mode .mermaid-svg,
+html.print-mode .excalidraw-embed {
+  overflow: visible;
+}
+
+html.print-mode .code-block pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+html.print-mode .markdown-body img,
+html.print-mode .mermaid-svg svg,
+html.print-mode .excalidraw-embed-svg svg {
+  max-width: 100%;
+  height: auto;
+}
+
+@media print {
+  html.print-mode .mermaid-block,
+  html.print-mode .excalidraw-embed,
+  html.print-mode .code-block,
+  html.print-mode .table-wrap,
+  html.print-mode .katex-display,
+  html.print-mode blockquote,
+  html.print-mode img,
+  html.print-mode svg {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  html.print-mode h1,
+  html.print-mode h2,
+  html.print-mode h3 {
+    break-after: avoid;
+  }
+}

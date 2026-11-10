@@ -100,15 +100,16 @@ function textOf(node: ReactNode): string {
 type CodeBlockProps = React.HTMLAttributes<HTMLPreElement> & {
   children?: ReactNode
   theme: ThemeMode
+  eager?: boolean
 }
 
-function CodeBlock({ children, theme, ...rest }: CodeBlockProps): React.JSX.Element {
+function CodeBlock({ children, theme, eager, ...rest }: CodeBlockProps): React.JSX.Element {
   const first = Children.toArray(children)[0]
   if (isValidElement(first)) {
     const props = first.props as { className?: string; children?: ReactNode }
     const language = /language-([\w-]+)/.exec(props.className ?? '')?.[1] ?? ''
     if (language === 'mermaid') {
-      return <MermaidBlock code={textOf(props.children).trim()} theme={theme} />
+      return <MermaidBlock code={textOf(props.children).trim()} theme={theme} eager={eager} />
     }
     return (
       <div className="code-block">
@@ -135,6 +136,7 @@ interface Props {
   onLink: (href: string) => void
   onEditScene?: (path: string) => void
   onTaskToggle?: (line: number, checked: boolean) => void
+  eager?: boolean
 }
 
 export function MarkdownDocument({
@@ -143,7 +145,8 @@ export function MarkdownDocument({
   theme,
   onLink,
   onEditScene,
-  onTaskToggle
+  onTaskToggle,
+  eager
 }: Props): React.JSX.Element {
   const { body, lineOffset } = useMemo(() => {
     const stripped = stripFrontmatter(content)
@@ -193,7 +196,7 @@ export function MarkdownDocument({
           {...rest}
           src={src}
           alt={alt ?? ''}
-          loading="lazy"
+          loading={eager ? 'eager' : 'lazy'}
           decoding="async"
           onClick={(event) => {
             const image = event.currentTarget
@@ -227,6 +230,7 @@ export function MarkdownDocument({
               theme={theme}
               onOpen={onLink}
               onEdit={onEditScene ?? onLink}
+              eager={eager}
             />
           )
         }
@@ -250,12 +254,12 @@ export function MarkdownDocument({
         )
       },
       pre: ({ node: _node, children, ...rest }) => (
-        <CodeBlock {...rest} theme={theme}>
+        <CodeBlock {...rest} theme={theme} eager={eager}>
           {children}
         </CodeBlock>
       )
     }),
-    [onLink, onEditScene, theme, lineOffset, onTaskToggle]
+    [onLink, onEditScene, theme, lineOffset, onTaskToggle, eager]
   )
 
   return (

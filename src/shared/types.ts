@@ -50,6 +50,7 @@ export interface Settings {
   editorFontSize: number
   editorWordWrap: boolean
   editorLineNumbers: boolean
+  pastedImageDir: string
   newFileExt: string
   restoreSession: boolean
   hideNoisyEntries: boolean
@@ -83,6 +84,29 @@ export interface AppInfo {
 export interface PathStat {
   kind: 'file' | 'dir' | 'none'
   isText: boolean
+  isPdf: boolean
+  isImage: boolean
+}
+
+export interface PdfMeta {
+  path: string
+  root: string
+  name: string
+  mtimeMs: number
+}
+
+export interface ImageMeta {
+  path: string
+  root: string
+  name: string
+  mtimeMs: number
+}
+
+export interface RestoreResult {
+  ok: boolean
+  mtimeMs?: number
+  reason?: 'exists' | 'error'
+  message?: string
 }
 
 export interface SettingsBundle {
@@ -116,6 +140,10 @@ export interface RenameEntryResult {
   message?: string
 }
 
+export type SavePastedImageResult =
+  | { ok: true; relative: string; absolute: string }
+  | { ok: false; message: string }
+
 export interface SearchHit {
   line: number
   text: string
@@ -134,10 +162,25 @@ export interface SearchResult {
   truncated: boolean
 }
 
+export interface PrintPayload {
+  content: string
+  baseDir: string
+  theme: ThemeMode
+}
+
+export interface PdfExportResult {
+  ok: boolean
+  message?: string
+  path?: string
+  canceled?: boolean
+}
+
 export interface MdvApi {
   openDialog(mode: 'file' | 'folder'): Promise<string | null>
   readDoc(path: string): Promise<DocPayload>
   readScene(path: string): Promise<DocPayload>
+  pdfMeta(path: string): Promise<PdfMeta>
+  imageMeta(path: string): Promise<ImageMeta>
   unwatchDoc(path: string): Promise<void>
   writeDoc(payload: {
     path: string
@@ -145,13 +188,23 @@ export interface MdvApi {
     baseMtimeMs: number
     force?: boolean
   }): Promise<WriteResult>
+  savePastedImage(payload: {
+    docPath: string
+    mimeType: string
+    data: Uint8Array
+  }): Promise<SavePastedImageResult>
+  restoreDoc(payload: { path: string; content: string }): Promise<RestoreResult>
   listDir(dir: string): Promise<FsEntry[]>
+  watchDir(dir: string): Promise<void>
+  unwatchDir(dir: string): Promise<void>
   createEntry(payload: { dir: string; name: string; kind: 'file' | 'dir' }): Promise<CreateEntryResult>
   renameEntry(payload: { path: string; name: string }): Promise<RenameEntryResult>
   trashPath(path: string): Promise<TrashResult>
   revealPath(path: string): Promise<void>
   searchTree(root: string, query: string): Promise<SearchResult>
   statPath(path: string): Promise<PathStat>
+  exportPdf(payload: { path: string; content: string; baseDir: string }): Promise<PdfExportResult>
+  printPayload(): Promise<PrintPayload | null>
   getSettings(): Promise<SettingsBundle>
   patchSettings(patch: Partial<Settings>): Promise<SettingsBundle>
   resetSettings(): Promise<SettingsBundle>
@@ -173,6 +226,7 @@ export interface MdvApi {
   onDocOpen(cb: (path: string) => void): () => void
   onDocChanged(cb: (payload: { path: string; mtimeMs: number } | null) => void): () => void
   onDocDeleted(cb: (payload: { path: string }) => void): () => void
+  onDirChanged(cb: (payload: { dir: string }) => void): () => void
   onCloseRequest(cb: () => void): () => void
   onPathsDropped(cb: (paths: string[]) => void): () => void
 }

@@ -185,6 +185,7 @@ interface Props {
   version: number
   expanded: Set<string>
   hiddenPaths: string[]
+  deletedEntries: FsEntry[]
   onToggleDir: (path: string) => void
   onOpen: (path: string) => void
   onCreateIn: (dir: string, kind: 'file' | 'dir') => void
@@ -201,6 +202,7 @@ export function FilesPanel({
   version,
   expanded,
   hiddenPaths,
+  deletedEntries,
   onToggleDir,
   onOpen,
   onCreateIn,
@@ -430,6 +432,7 @@ export function FilesPanel({
           currentPath={currentPath}
           expanded={expanded}
           isHidden={isHidden}
+          deletedEntries={deletedEntries}
           onToggle={trackToggle}
           onOpen={trackOpen}
           onContext={openMenu}

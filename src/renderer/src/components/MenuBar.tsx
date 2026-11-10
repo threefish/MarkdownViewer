@@ -10,7 +10,9 @@ export type MenuAction =
   | 'open-path'
   | 'save'
   | 'toggle-edit'
+  | 'export-pdf'
   | 'close-tab'
+  | 'toggle-tabs-list'
   | 'settings'
   | 'quit'
   | 'undo'
@@ -30,6 +32,8 @@ export interface MenuState {
   hasDoc: boolean
   editing: boolean
   dirty: boolean
+  pdf: boolean
+  canExportPdf: boolean
   sidebarCollapsed: boolean
   themeMode: ThemePreference
   recents: RecentDoc[]
@@ -110,8 +114,14 @@ function buildGroups(state: MenuState): Group[] {
         {
           label: state.editing ? '切换到阅读' : '编辑文本',
           hint: 'Ctrl+E',
-          disabled: !state.hasDoc,
+          disabled: !state.hasDoc || state.pdf,
           action: 'toggle-edit'
+        },
+        {
+          label: '导出 PDF…',
+          hint: 'Ctrl+P',
+          disabled: !state.canExportPdf,
+          action: 'export-pdf'
         },
         {
           label: '关闭标签页',
@@ -119,6 +129,7 @@ function buildGroups(state: MenuState): Group[] {
           disabled: !state.hasDoc,
           action: 'close-tab'
         },
+        { label: '全部打开的文件…', hint: 'Ctrl+Shift+T', action: 'toggle-tabs-list' },
         { separator: true },
         { label: '设置…', hint: 'Ctrl+,', action: 'settings' },
         { separator: true },
@@ -136,7 +147,7 @@ function buildGroups(state: MenuState): Group[] {
         { label: '粘贴', hint: 'Ctrl+V', action: 'paste' },
         { label: '全选', hint: 'Ctrl+A', action: 'select-all' },
         { separator: true },
-        { label: '查找', hint: 'Ctrl+F', disabled: !state.hasDoc, action: 'find' }
+        { label: '查找', hint: 'Ctrl+F', disabled: !state.hasDoc || state.pdf, action: 'find' }
       ]
     },
     {

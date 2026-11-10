@@ -13,20 +13,44 @@ import type {
   CreateEntryResult,
   DocPayload,
   FsEntry,
+  ImageMeta,
   PathStat,
+  PdfExportResult,
+  PdfMeta,
   RenameEntryResult,
+  RestoreResult,
+  SavePastedImageResult,
   SearchResult,
   SettingsBundle,
   TrashResult,
   WriteResult
 } from '../shared/types'
-import { isExcalidrawFile, isTextFile, textFileExtensions } from '../shared/fileKinds'
+import {
+  imageFileExtensions,
+  isExcalidrawFile,
+  isImageFile,
+  isPdfFile,
+  isTextFile,
+  textFileExtensions
+} from '../shared/fileKinds'
 import { themeBackground } from '../shared/themes'
 import { listDirectory } from './fsTree'
 import { searchTree } from './fsSearch'
 import { getSettings, patchSettings, applyNativeTheme, resetPreferences, resolveThemeMode } from './settings'
-import { unwatchDocument, watchDocument, pauseWatched, renameWatched, resumeWatched } from './watcher'
+import {
+  unwatchDocument,
+  watchDocument,
+  pauseWatched,
+  renameWatched,
+  resumeWatched,
+  watchDirectory,
+  unwatchDirectory,
+  pauseWatchedDirs,
+  renameWatchedDirs,
+  resumeWatchedDirs
+} from './watcher'
 import { closeMainWindow } from './window'
+import { exportDocumentToPdf, takePrintPayload } from './pdf'
 import { getAssocInfo, registerAssociation, unregisterAssociation } from './registry'
 
 type WindowGetter = () => BrowserWindow | null
@@ -49,6 +73,20 @@ function exists(target: string): Promise<boolean> {
     () => true,
     () => false
   )
+}
+
+const PASTE_IMAGE_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/bmp': 'bmp'
+}
+const PASTE_IMAGE_MAX = 20 * 1024 * 1024
+
+function pasteImageStamp(date: Date): string {
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
 }
 
 function send(getWin: WindowGetter, channel: string, payload: unknown): void {
@@ -88,6 +126,8 @@ export function registerIpc(getWin: WindowGetter): void {
             properties: ['openFile'],
             filters: [
               { name: '文本 / 代码', extensions: textFileExtensions() },
+              { name: 'PDF 文档', extensions: ['pdf'] },
+              { name: '图片', extensions: imageFileExtensions() },
               { name: '所有文件', extensions: ['*'] }
             ]
           }
@@ -114,6 +154,62 @@ export function registerIpc(getWin: WindowGetter): void {
   ipcMain.handle('scene:read', async (_event, rawPath: string): Promise<DocPayload> => {
     return readDocument(rawPath)
   })
+
+  // PDF 是二进制，只取元信息并注册监听（外部修改/删除仍要通知渲染层），内容交给 pdf.js 经 mdv:// 读取。
+  ipcMain.handle('pdf:meta', async (_event, rawPath: string): Promise<PdfMeta> => {
+    const target = requireAbsPath(rawPath, '文档路径')
+    if (!isPdfFile(target)) throw new Error('不是 PDF 文件')
+    const real = await fs.realpath(target)
+    const stat = await fs.stat(real)
+    if (!stat.isFile()) throw new Error('目标不是文件')
+    const meta: PdfMeta = {
+      path: real,
+      root: path.dirname(real),
+      name: path.basename(real),
+      mtimeMs: stat.mtimeMs
+    }
+    watchDocument(meta.path, {
+      changed: (file, mtimeMs) => send(getWin, 'doc:changed', { path: file, mtimeMs }),
+      deleted: (file) => send(getWin, 'doc:deleted', { path: file })
+    })
+    return meta
+  })
+
+  // 图片同样是二进制，只取元信息并注册监听，像素内容交给渲染层经 mdv:// 读取。
+  ipcMain.handle('image:meta', async (_event, rawPath: string): Promise<ImageMeta> => {
+    const target = requireAbsPath(rawPath, '图片路径')
+    if (!isImageFile(target)) throw new Error('不是支持的图片文件')
+    const real = await fs.realpath(target)
+    const stat = await fs.stat(real)
+    if (!stat.isFile()) throw new Error('目标不是文件')
+    const meta: ImageMeta = {
+      path: real,
+      root: path.dirname(real),
+      name: path.basename(real),
+      mtimeMs: stat.mtimeMs
+    }
+    watchDocument(meta.path, {
+      changed: (file, mtimeMs) => send(getWin, 'doc:changed', { path: file, mtimeMs }),
+      deleted: (file) => send(getWin, 'doc:deleted', { path: file })
+    })
+    return meta
+  })
+
+  ipcMain.handle('print:payload', (event) => takePrintPayload(event.sender.id))
+
+  ipcMain.handle(
+    'doc:export-pdf',
+    async (_event, raw: { path?: unknown; content?: unknown; baseDir?: unknown }): Promise<PdfExportResult> => {
+      try {
+        const docPath = requireAbsPath(raw?.path, '文档路径')
+        const baseDir = requireAbsPath(raw?.baseDir, '目录路径')
+        if (typeof raw?.content !== 'string') return { ok: false, message: '内容无效' }
+        return await exportDocumentToPdf(getWin(), { path: docPath, content: raw.content, baseDir })
+      } catch (err) {
+        return { ok: false, message: err instanceof Error ? err.message : String(err) }
+      }
+    }
+  )
 
   ipcMain.handle('doc:write', async (_event, raw: {
     path?: unknown
@@ -173,8 +269,120 @@ export function registerIpc(getWin: WindowGetter): void {
     }
   })
 
+  // 粘贴图片落盘：目录取「文档目录 + 设置中的相对子目录」，wx 独占写入避免覆盖任何已有文件。
+  ipcMain.handle('doc:save-pasted-image', async (_event, raw: {
+    docPath?: unknown
+    mimeType?: unknown
+    data?: unknown
+  }): Promise<SavePastedImageResult> => {
+    try {
+      const docPath = requireAbsPath(raw?.docPath, '文档路径')
+      if (!isTextFile(docPath)) return { ok: false, message: '不是支持的文本文件' }
+      const ext = typeof raw?.mimeType === 'string' ? PASTE_IMAGE_MIME[raw.mimeType] : undefined
+      if (!ext) return { ok: false, message: '不支持的图片格式' }
+      let data: Uint8Array
+      if (raw?.data instanceof Uint8Array) data = raw.data
+      else if (raw?.data instanceof ArrayBuffer) data = new Uint8Array(raw.data)
+      else return { ok: false, message: '图片数据无效' }
+      if (!data.byteLength) return { ok: false, message: '图片数据无效' }
+      if (data.byteLength > PASTE_IMAGE_MAX) return { ok: false, message: '图片超过 20MB，未保存' }
+
+      const base = path.dirname(docPath)
+      const sub = getSettings().pastedImageDir
+      const dir = sub ? path.join(base, sub) : base
+      const relativeDir = path.relative(base, dir)
+      if (
+        relativeDir === '..' ||
+        relativeDir.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relativeDir)
+      ) {
+        return { ok: false, message: '保存目录无效' }
+      }
+      await fs.mkdir(dir, { recursive: true })
+
+      const stem = `image-${pasteImageStamp(new Date())}`
+      let target = ''
+      let handle: Awaited<ReturnType<typeof fs.open>> | null = null
+      for (let index = 1; index <= 100; index++) {
+        const name = index === 1 ? `${stem}.${ext}` : `${stem}-${index}.${ext}`
+        const candidate = path.join(dir, name)
+        try {
+          handle = await fs.open(candidate, 'wx')
+          target = candidate
+          break
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+        }
+      }
+      if (!handle || !target) return { ok: false, message: '同名图片过多，未保存' }
+      try {
+        await handle.writeFile(data)
+      } catch (err) {
+        await handle.close().catch(() => {})
+        await fs.unlink(target).catch(() => {})
+        throw err
+      }
+      await handle.close()
+      return {
+        ok: true,
+        relative: path.relative(base, target).replace(/\\/g, '/'),
+        absolute: target
+      }
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle('fs:list', async (_event, dir: string): Promise<FsEntry[]> => {
     return listDirectory(requireAbsPath(dir, '目录路径'), getSettings().hideNoisyEntries)
+  })
+
+  ipcMain.handle('fs:watch-dir', (_event, dir: string) => {
+    if (typeof dir !== 'string' || !path.isAbsolute(dir)) return
+    watchDirectory(dir, { changed: (changed) => send(getWin, 'fs:dir-changed', { dir: changed }) })
+  })
+
+  ipcMain.handle('fs:unwatch-dir', (_event, dir: string) => {
+    if (typeof dir !== 'string' || !path.isAbsolute(dir)) return
+    unwatchDirectory(dir)
+  })
+
+  // 「保留文件」：文件被外部删除后，用标签页缓存内容把它重建到磁盘。
+  // 写前先确认路径仍不存在，避免覆盖外部新写入的文件（数据安全优先）。
+  ipcMain.handle('doc:restore', async (_event, raw: {
+    path?: unknown
+    content?: unknown
+  }): Promise<RestoreResult> => {
+    try {
+      const target = requireAbsPath(raw?.path, '文档路径')
+      if (!isTextFile(target)) return { ok: false, reason: 'error', message: '不是支持的文本文件' }
+      if (typeof raw.content !== 'string') return { ok: false, reason: 'error', message: '内容无效' }
+      if (Buffer.byteLength(raw.content, 'utf8') > 30 * 1024 * 1024) {
+        return { ok: false, reason: 'error', message: '内容超过 30MB，已取消' }
+      }
+      try {
+        await fs.lstat(target)
+        return { ok: false, reason: 'exists', message: '该路径已存在文件，未做覆盖' }
+      } catch {
+        // 不存在才继续重建
+      }
+      const tmp = `${target}.mdv-restore-${process.pid}.tmp`
+      try {
+        await fs.writeFile(tmp, raw.content, 'utf8')
+        await fs.rename(tmp, target)
+      } catch (err) {
+        await fs.unlink(tmp).catch(() => {})
+        throw err
+      }
+      const next = await fs.stat(target)
+      return { ok: true, mtimeMs: next.mtimeMs }
+    } catch (err) {
+      return {
+        ok: false,
+        reason: 'error',
+        message: err instanceof Error ? err.message : String(err)
+      }
+    }
   })
 
   ipcMain.handle('fs:search', async (_event, rawRoot: string, query: string): Promise<SearchResult> => {
@@ -266,15 +474,20 @@ export function registerIpc(getWin: WindowGetter): void {
         return { ok: false, message: '同名文件或文件夹已存在' }
       }
       pauseWatched(real)
+      pauseWatchedDirs(real)
       let renamed = false
       try {
         await fs.rename(real, target)
         renamed = true
       } finally {
-        if (!renamed) resumeWatched(real)
+        if (!renamed) {
+          resumeWatched(real)
+          resumeWatchedDirs(real)
+        }
       }
       const next = await fs.realpath(target)
       renameWatched(real, next)
+      renameWatchedDirs(real, next)
       return { ok: true, path: next }
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code
@@ -293,10 +506,12 @@ export function registerIpc(getWin: WindowGetter): void {
         return { ok: false, message: '不支持删除此类型的项目' }
       }
       pauseWatched(target)
+      pauseWatchedDirs(target)
       try {
         await shell.trashItem(target)
       } catch (err) {
         resumeWatched(target)
+        resumeWatchedDirs(target)
         throw err
       }
       return { ok: true }
@@ -319,14 +534,19 @@ export function registerIpc(getWin: WindowGetter): void {
     try {
       real = await fs.realpath(requireAbsPath(rawPath))
     } catch {
-      return { kind: 'none', isText: false }
+      return { kind: 'none', isText: false, isPdf: false, isImage: false }
     }
     try {
       const stat = await fs.stat(real)
-      if (stat.isDirectory()) return { kind: 'dir', isText: false }
-      return { kind: 'file', isText: isTextFile(real) }
+      if (stat.isDirectory()) return { kind: 'dir', isText: false, isPdf: false, isImage: false }
+      return {
+        kind: 'file',
+        isText: isTextFile(real),
+        isPdf: isPdfFile(real),
+        isImage: isImageFile(real)
+      }
     } catch {
-      return { kind: 'none', isText: false }
+      return { kind: 'none', isText: false, isPdf: false, isImage: false }
     }
   })
 

@@ -12,6 +12,10 @@ const TEXT_EXTS = new Set([
   'vtt', 'xhtml', 'xml', 'yaml', 'yml', 'zsh'
 ])
 
+const IMAGE_EXTS = new Set([
+  'avif', 'bmp', 'gif', 'ico', 'jpeg', 'jpg', 'png', 'svg', 'webp'
+])
+
 const TEXT_NAMES = new Set([
   '.editorconfig',
   '.env',
@@ -55,6 +59,14 @@ export function isExcalidrawFile(p: string): boolean {
   return fileExt(p) === 'excalidraw'
 }
 
+export function isPdfFile(p: string): boolean {
+  return fileExt(p) === 'pdf'
+}
+
+export function isImageFile(p: string): boolean {
+  return IMAGE_EXTS.has(fileExt(p))
+}
+
 export function isTextFile(p: string): boolean {
   const base = baseName(p).toLowerCase()
   if (!base) return false
@@ -64,4 +76,8 @@ export function isTextFile(p: string): boolean {
 
 export function textFileExtensions(): string[] {
   return [...TEXT_EXTS].sort()
+}
+
+export function imageFileExtensions(): string[] {
+  return [...IMAGE_EXTS].sort()
 }

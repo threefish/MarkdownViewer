@@ -1,7 +1,7 @@
 import { promises as fs, type Dirent, type Stats } from 'node:fs'
 import path from 'node:path'
 import type { FsEntry, SearchFileResult, SearchResult } from '../shared/types'
-import { isTextFile } from '../shared/fileKinds'
+import { isImageFile, isPdfFile, isTextFile } from '../shared/fileKinds'
 
 const IGNORED = new Set([
   'node_modules',
@@ -71,7 +71,9 @@ export async function searchTree(rawRoot: string, rawQuery: string): Promise<Sea
         continue
       }
 
-      if (!entry.isFile() || !isTextFile(entry.name)) continue
+      const plainText = isTextFile(entry.name)
+      const binary = isPdfFile(entry.name) || isImageFile(entry.name)
+      if (!entry.isFile() || (!plainText && !binary)) continue
       if (++scanned > MAX_FILES) {
         truncated = true
         break
@@ -81,6 +83,8 @@ export async function searchTree(rawRoot: string, rawQuery: string): Promise<Sea
         nameMatches.push({ name: entry.name, path: full, isDir: false })
       }
 
+      // PDF / 图片是二进制，只参与文件名匹配，不做正文内容检索。
+      if (!plainText) continue
       if (contentMatches.length >= MAX_FILE_RESULTS) continue
 
       let stat: Stats

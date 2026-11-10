@@ -1,5 +1,6 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import type { FsEntry } from '../../../shared/types'
+import type { PdfOutlineEntry } from '../lib/pdfOutline'
 import { BookIcon, ListIcon } from './Icons'
 import { FilesPanel } from './FilesPanel'
 import { Outline } from './Outline'
@@ -17,6 +18,11 @@ interface Props {
   treeVersion: number
   expanded: Set<string>
   hiddenPaths: string[]
+  deletedEntries: FsEntry[]
+  pdfActive: boolean
+  pdfOutline: PdfOutlineEntry[] | null
+  pdfPage: number
+  onJumpPdfPage: (page: number) => void
   scrollRef: React.RefObject<HTMLDivElement | null>
   onToggleDir: (path: string) => void
   onOpen: (path: string) => void
@@ -44,6 +50,11 @@ export function Sidebar({
   treeVersion,
   expanded,
   hiddenPaths,
+  deletedEntries,
+  pdfActive,
+  pdfOutline,
+  pdfPage,
+  onJumpPdfPage,
   scrollRef,
   onToggleDir,
   onOpen,
@@ -107,6 +118,7 @@ export function Sidebar({
               version={treeVersion}
               expanded={expanded}
               hiddenPaths={hiddenPaths}
+              deletedEntries={deletedEntries}
               onToggleDir={onToggleDir}
               onOpen={onOpen}
               onCreateIn={onCreateIn}
@@ -118,7 +130,14 @@ export function Sidebar({
               onRemoveRoot={onRemoveRoot}
             />
           ) : (
-            <Outline docKey={docKey} scrollRef={scrollRef} />
+            <Outline
+              docKey={docKey}
+              scrollRef={scrollRef}
+              pdfActive={pdfActive}
+              pdfOutline={pdfOutline}
+              pdfPage={pdfPage}
+              onJumpPage={onJumpPdfPage}
+            />
           )}
         </div>
       </div>

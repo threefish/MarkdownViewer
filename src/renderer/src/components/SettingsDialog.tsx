@@ -104,6 +104,7 @@ export function SettingsDialog({
   const [resetArmed, setResetArmed] = useState(false)
   const [resetNote, setResetNote] = useState<string | null>(null)
   const [drawerWidth, setDrawerWidth] = useState(settings.settingsWidth)
+  const [imageDirDraft, setImageDirDraft] = useState(settings.pastedImageDir)
   const fontSize = fontPreview ?? settings.contentFontSize
   const leading = leadingPreview ?? settings.contentLineHeight
   const editorFont = editorFontPreview ?? settings.editorFontSize
@@ -114,6 +115,10 @@ export function SettingsDialog({
   useEffect(() => {
     setDrawerWidth(settings.settingsWidth)
   }, [settings.settingsWidth])
+
+  useEffect(() => {
+    setImageDirDraft(settings.pastedImageDir)
+  }, [settings.pastedImageDir])
 
   useEffect(() => {
     if (!open) return
@@ -237,6 +242,15 @@ export function SettingsDialog({
       return
     }
     void onPatch({ editorFontSize: editorFontPreview })
+  }
+
+  const commitImageDir = (): void => {
+    const next = imageDirDraft.trim()
+    if (next === settings.pastedImageDir) {
+      setImageDirDraft(settings.pastedImageDir)
+      return
+    }
+    void onPatch({ pastedImageDir: next })
   }
 
   const handleReset = async (): Promise<void> => {
@@ -440,6 +454,30 @@ export function SettingsDialog({
           </div>
           <div className="hint">
             双击标签栏空白处，或点击标签栏右侧的 + 新建文件；文件名会按此格式预填，仍可手动修改。
+          </div>
+          <div className="setting-row">
+            <label className="setting-row-label" htmlFor="setting-pasted-image-dir">
+              粘贴图片目录
+            </label>
+            <input
+              id="setting-pasted-image-dir"
+              className="setting-input"
+              type="text"
+              value={imageDirDraft}
+              placeholder="assets"
+              spellCheck={false}
+              onChange={(event) => setImageDirDraft(event.target.value)}
+              onBlur={commitImageDir}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter') return
+                event.preventDefault()
+                commitImageDir()
+                event.currentTarget.blur()
+              }}
+            />
+          </div>
+          <div className="hint">
+            粘贴截图或剪贴板图片的保存位置，相对当前文档所在目录，如 assets、images；留空表示与文档同目录。
           </div>
         </section>
 

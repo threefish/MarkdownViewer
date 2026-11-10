@@ -42,6 +42,25 @@ function normalizeNewFileExt(value: unknown): string {
   return ext
 }
 
+// 空串表示与文档同目录；非法路径回落到默认 assets，避免把图片写到文档目录之外。
+function normalizePastedImageDir(value: unknown): string {
+  if (typeof value !== 'string') return 'assets'
+  const dir = value
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/\/+/g, '/')
+    .replace(/\/+$/, '')
+  if (!dir || dir === '.') return ''
+  if (dir.length > 120 || /^[a-zA-Z]:/.test(dir) || dir.startsWith('/')) return 'assets'
+  if (/[<>:"|?*%#\u0000-\u001f]/.test(dir)) return 'assets'
+  const segments = dir.split('/')
+  if (segments.some((part) => !part || part === '.' || part === '..' || /[. ]$/.test(part))) {
+    return 'assets'
+  }
+  return dir
+}
+
 let cache: Settings | null = null
 
 function settingsFile(): string {
@@ -154,6 +173,7 @@ function defaults(): Settings {
     editorFontSize: DEFAULT_EDITOR_FONT,
     editorWordWrap: true,
     editorLineNumbers: true,
+    pastedImageDir: 'assets',
     newFileExt: 'md',
     restoreSession: true,
     hideNoisyEntries: true,
@@ -189,6 +209,7 @@ export function getSettings(): Settings {
       editorFontSize: normalizeEditorFont(parsed.editorFontSize),
       editorWordWrap: normalizeBool(parsed.editorWordWrap, true),
       editorLineNumbers: normalizeBool(parsed.editorLineNumbers, true),
+      pastedImageDir: normalizePastedImageDir(parsed.pastedImageDir),
       newFileExt: normalizeNewFileExt(parsed.newFileExt),
       restoreSession: normalizeBool(parsed.restoreSession, true),
       hideNoisyEntries: normalizeBool(parsed.hideNoisyEntries, true),
@@ -226,6 +247,8 @@ export function patchSettings(patch: Partial<Settings>): Settings {
     next.editorWordWrap = normalizeBool(patch.editorWordWrap, true)
   if (patch.editorLineNumbers !== undefined)
     next.editorLineNumbers = normalizeBool(patch.editorLineNumbers, true)
+  if (patch.pastedImageDir !== undefined)
+    next.pastedImageDir = normalizePastedImageDir(patch.pastedImageDir)
   if (patch.newFileExt !== undefined) next.newFileExt = normalizeNewFileExt(patch.newFileExt)
   if (patch.restoreSession !== undefined)
     next.restoreSession = normalizeBool(patch.restoreSession, true)

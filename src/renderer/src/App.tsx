@@ -11,13 +11,14 @@ import {
 } from 'react'
 import type { AppInfo, ContentFont, DocPayload, FsEntry, Settings, ThemeMode } from '../../shared/types'
 import { isThemePreference } from '../../shared/themes'
-import { isExcalidrawFile, isMarkdownFile } from '../../shared/fileKinds'
+import { isExcalidrawFile, isImageFile, isMarkdownFile, isPdfFile } from '../../shared/fileKinds'
 import { AboutDialog } from './components/AboutDialog'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import type { EditorHandle } from './components/Editor'
 import { EmptyState } from './components/EmptyState'
 import { HiddenRestoreDialog } from './components/HiddenRestoreDialog'
 import { CloseIcon, EyeIcon, PencilIcon, SearchIcon } from './components/Icons'
+import { clearImageViewState, ImageView } from './components/ImageView'
 import type { MenuAction, MenuState } from './components/MenuBar'
 import { NewEntryDialog } from './components/NewEntryDialog'
 import { SearchBar } from './components/SearchBar'
@@ -30,6 +31,7 @@ import { MarkdownDocument } from './lib/markdown'
 import { languageKeyForPath } from './lib/codeLanguage'
 import { docTier, hasVeryLongLine, isLargeDoc } from './lib/largeFile'
 import { classifyHref } from './lib/pathResolve'
+import type { PdfOutlineEntry } from './lib/pdfOutline'
 import { applyTaskToggle, errorMessage } from './lib/text'
 
 const Editor = lazy(() =>
@@ -38,6 +40,10 @@ const Editor = lazy(() =>
 
 const ExcalidrawPane = lazy(() =>
   import('./components/ExcalidrawPane').then((module) => ({ default: module.ExcalidrawPane }))
+)
+
+const PdfView = lazy(() =>
+  import('./components/PdfView').then((module) => ({ default: module.PdfView }))
 )
 
 const INITIAL_SETTINGS: Settings = {
@@ -52,6 +58,7 @@ const INITIAL_SETTINGS: Settings = {
   editorFontSize: 13.5,
   editorWordWrap: true,
   editorLineNumbers: true,
+  pastedImageDir: 'assets',
   newFileExt: 'md',
   restoreSession: true,
   hideNoisyEntries: true,
@@ -96,6 +103,9 @@ interface DocTab {
   externalDisk: { diskContent: string; diskMtimeMs: number } | null
   banner: string | null
   largeEditOk?: boolean
+  kind?: 'pdf' | 'image'
+  deleted?: boolean
+  reloadNonce?: number
 }
 
 interface Conflict {
@@ -182,6 +192,7 @@ export default function App(): JSX.Element {
   const [collapsed, setCollapsed] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [tabsListOpen, setTabsListOpen] = useState(false)
   const [hiddenPickerDir, setHiddenPickerDir] = useState<string | null>(null)
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -197,6 +208,14 @@ export default function App(): JSX.Element {
   const [createBusy, setCreateBusy] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [treeVersion, setTreeVersion] = useState(0)
+  const [pdfOutlineState, setPdfOutlineState] = useState<{
+    path: string
+    items: PdfOutlineEntry[]
+  } | null>(null)
+  const [pdfPageState, setPdfPageState] = useState<{ path: string; page: number } | null>(null)
+  const [pdfJump, setPdfJump] = useState<{ path: string; page: number; nonce: number } | null>(null)
+  const [pdfFindSignal, setPdfFindSignal] = useState(0)
+  const pdfPagesRef = useRef(new Map<string, number>())
   const [restoreTick, setRestoreTick] = useState(0)
   const [trashTarget, setTrashTarget] = useState<FsEntry | null>(null)
   const [createBaseDir, setCreateBaseDir] = useState<string | null>(null)
@@ -212,10 +231,12 @@ export default function App(): JSX.Element {
   const restoredRef = useRef(false)
   const persistedTabsRef = useRef('')
   const scrollMap = useRef(new Map<string, number>())
+  const editorScrollMap = useRef(new Map<string, number>())
   const pendingPrompt = useRef<Prompt | null>(null)
   const commandRef = useRef<(action: MenuAction, payload?: string) => void>(() => {})
   const navRef = useRef<{ list: string[]; index: number }>({ list: [], index: -1 })
   const navJumpRef = useRef(false)
+  const exportBusyRef = useRef(false)
 
   const setTabs = useCallback((updater: (prev: DocTab[]) => DocTab[]) => {
     const next = updater(tabsRef.current)
@@ -438,6 +459,59 @@ export default function App(): JSX.Element {
         activateTab(existing.path, hash)
         return
       }
+      const binaryKind = isPdfFile(path) ? 'pdf' : isImageFile(path) ? 'image' : null
+      if (binaryKind) {
+        try {
+          const meta =
+            binaryKind === 'pdf'
+              ? await window.mdv.pdfMeta(path)
+              : await window.mdv.imageMeta(path)
+          const opened = tabsRef.current.find((tab) => samePath(tab.path, meta.path))
+          if (opened) {
+            activateTab(opened.path, hash)
+            return
+          }
+          const tab: DocTab = {
+            path: meta.path,
+            root: meta.root,
+            name: meta.name,
+            content: '',
+            mtimeMs: meta.mtimeMs,
+            draft: null,
+            editing: false,
+            searchOpen: false,
+            externalChanged: false,
+            externalDisk: null,
+            banner: null,
+            kind: binaryKind
+          }
+          setTabs((prev) => [...prev, tab])
+          setActiveId(tab.path)
+          scrollMap.current.set(tab.path, 0)
+          setNotice(null)
+          if (hash) setPendingHash(hash)
+          if (opts?.attach !== false) ensureRootFor(tab.path)
+          if (opts?.reveal !== false) revealFile(tab.path)
+          if (opts?.recents !== false) {
+            await patchRecents({
+              path: meta.path,
+              root: meta.root,
+              name: meta.name,
+              content: '',
+              mtimeMs: meta.mtimeMs
+            })
+          }
+        } catch (err) {
+          if (!opts?.quiet) {
+            setNotice(
+              binaryKind === 'pdf'
+                ? `无法打开 PDF：${errorMessage(err)}`
+                : `无法打开图片：${errorMessage(err)}`
+            )
+          }
+        }
+        return
+      }
       try {
         const payload = await window.mdv.readDoc(path)
         const opened = tabsRef.current.find((tab) => samePath(tab.path, payload.path))
@@ -482,7 +556,7 @@ export default function App(): JSX.Element {
           setNotice(null)
           return
         }
-        if (stat.kind === 'file' && stat.isText) {
+        if (stat.kind === 'file' && (stat.isText || stat.isPdf || stat.isImage)) {
           await openDoc(path)
           return
         }
@@ -504,7 +578,10 @@ export default function App(): JSX.Element {
       for (const path of list) {
         const stat = await window.mdv.statPath(path).catch(() => null)
         if (!stat) continue
-        if (stat.kind === 'dir' || (stat.kind === 'file' && stat.isText)) {
+        if (
+          stat.kind === 'dir' ||
+          (stat.kind === 'file' && (stat.isText || stat.isPdf || stat.isImage))
+        ) {
           await openPath(path)
         } else if (stat.kind === 'file' && list.length === 1) {
           await openPath(path)
@@ -557,6 +634,8 @@ export default function App(): JSX.Element {
       }
       for (const path of closing) {
         scrollMap.current.delete(path)
+        editorScrollMap.current.delete(path)
+        clearImageViewState(path)
         void window.mdv.unwatchDoc(path)
       }
     },
@@ -648,12 +727,89 @@ export default function App(): JSX.Element {
 
   const saveActive = useCallback(async () => {
     const current = tabsRef.current.find((tab) => tab.path === activeIdRef.current)
-    if (current) await saveTab(current.path)
+    if (current && !isPdfFile(current.path) && !isImageFile(current.path)) {
+      await saveTab(current.path)
+    }
   }, [saveTab])
+
+  const handlePasteImage = useCallback(async (file: File): Promise<string | null> => {
+    const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
+    if (!tab || !isMarkdownFile(tab.path)) return null
+    if (!file.type.startsWith('image/')) {
+      setNotice('不支持的图片格式')
+      return null
+    }
+    if (!file.size) {
+      setNotice('图片数据无效')
+      return null
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setNotice('图片超过 20MB，未保存')
+      return null
+    }
+    try {
+      const data = new Uint8Array(await file.arrayBuffer())
+      const result = await window.mdv.savePastedImage({
+        docPath: tab.path,
+        mimeType: file.type,
+        data
+      })
+      if (!result.ok) {
+        setNotice(`粘贴图片失败：${result.message}`)
+        return null
+      }
+      setNotice(`已保存图片到 ${result.relative}`)
+      return `![](${result.relative})`
+    } catch (err) {
+      setNotice(`粘贴图片失败：${errorMessage(err)}`)
+      return null
+    }
+  }, [])
+
+  const exportPdf = useCallback(async () => {
+    if (exportBusyRef.current) return
+    const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
+    if (!tab || !isMarkdownFile(tab.path) || docTier(tab.content.length) !== 'normal') {
+      setNotice('当前文档无法导出 PDF')
+      return
+    }
+    exportBusyRef.current = true
+    setNotice('正在导出 PDF…')
+    try {
+      const result = await window.mdv.exportPdf({
+        path: tab.path,
+        content: tab.draft ?? tab.content,
+        baseDir: tab.root
+      })
+      if (result.canceled) setNotice(null)
+      else if (result.ok) setNotice(`已导出 PDF：${result.path ?? ''}`)
+      else setNotice(`导出失败：${result.message ?? '未知错误'}`)
+    } catch (err) {
+      setNotice(`导出失败：${errorMessage(err)}`)
+    } finally {
+      exportBusyRef.current = false
+    }
+  }, [])
 
   const reloadActive = useCallback(async () => {
     const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
     if (!tab) return
+    if (isPdfFile(tab.path) || isImageFile(tab.path)) {
+      try {
+        const meta = isPdfFile(tab.path)
+          ? await window.mdv.pdfMeta(tab.path)
+          : await window.mdv.imageMeta(tab.path)
+        updateTab(tab.path, (item) => ({
+          mtimeMs: meta.mtimeMs,
+          deleted: false,
+          banner: null,
+          reloadNonce: (item.reloadNonce ?? 0) + 1
+        }))
+      } catch (err) {
+        updateTab(tab.path, { banner: `无法重新加载：${errorMessage(err)}` })
+      }
+      return
+    }
     if (isDirty(tab)) {
       updateTab(tab.path, { banner: '有未保存的修改，未重新加载' })
       return
@@ -673,9 +829,68 @@ export default function App(): JSX.Element {
     }
   }, [updateTab])
 
+  const restoreDeleted = useCallback(
+    async (tab: DocTab) => {
+      if (isPdfFile(tab.path)) {
+        setNotice('PDF 没有可写回的缓存内容，无法保留')
+        return
+      }
+      if (isImageFile(tab.path)) {
+        setNotice('图片没有可写回的缓存内容，无法保留')
+        return
+      }
+      const text = tab.draft ?? tab.content
+      try {
+        const result = await window.mdv.restoreDoc({ path: tab.path, content: text })
+        if (result.ok) {
+          updateTab(tab.path, (item) => ({
+            content: text,
+            draft: item.editing ? text : null,
+            mtimeMs: result.mtimeMs ?? item.mtimeMs,
+            deleted: false,
+            externalChanged: false,
+            externalDisk: null,
+            banner: null
+          }))
+          setTreeVersion((value) => value + 1)
+          setNotice(`已保留文件：${tab.path}`)
+          return
+        }
+        if (result.reason === 'exists') {
+          setNotice('该路径已存在同名文件，未做覆盖')
+          return
+        }
+        setNotice(`无法保留文件：${result.message ?? '未知错误'}`)
+      } catch (err) {
+        setNotice(`无法保留文件：${errorMessage(err)}`)
+      }
+    },
+    [updateTab]
+  )
+
+  const handlePdfOutline = useCallback((path: string, items: PdfOutlineEntry[]) => {
+    setPdfOutlineState({ path, items })
+  }, [])
+
+  const handlePdfPageChange = useCallback((path: string, page: number) => {
+    pdfPagesRef.current.set(path, page)
+    setPdfPageState({ path, page })
+  }, [])
+
+  const jumpPdfPage = useCallback((page: number) => {
+    const path = activeIdRef.current
+    if (!path) return
+    setPdfJump((prev) => ({ path, page, nonce: (prev?.nonce ?? 0) + 1 }))
+  }, [])
+
+  useEffect(() => {
+    setPdfJump(null)
+  }, [activeId])
+
   const toggleEdit = useCallback(() => {
     const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
     if (!tab) return
+    if (isPdfFile(tab.path) || isImageFile(tab.path)) return
     if (tab.editing) {
       updateTab(tab.path, { editing: false })
       return
@@ -708,7 +923,11 @@ export default function App(): JSX.Element {
 
   const openFind = useCallback(() => {
     const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
-    if (!tab || isExcalidrawFile(tab.path)) return
+    if (!tab || isExcalidrawFile(tab.path) || isImageFile(tab.path)) return
+    if (isPdfFile(tab.path)) {
+      setPdfFindSignal((value) => value + 1)
+      return
+    }
     if (tab.editing || !isMarkdownFile(tab.path) || isLargeDoc(tab.content.length)) {
       editorHandle.current?.openSearch()
       return
@@ -725,7 +944,11 @@ export default function App(): JSX.Element {
 
   const toggleSearch = useCallback(() => {
     const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
-    if (!tab || isExcalidrawFile(tab.path)) return
+    if (!tab || isExcalidrawFile(tab.path) || isImageFile(tab.path)) return
+    if (isPdfFile(tab.path)) {
+      setPdfFindSignal((value) => value + 1)
+      return
+    }
     if (tab.editing || !isMarkdownFile(tab.path) || isLargeDoc(tab.content.length)) {
       editorHandle.current?.openSearch()
       return
@@ -742,8 +965,9 @@ export default function App(): JSX.Element {
     if (patch.contentWidth !== undefined) setContentWidth(bundle.settings.contentWidth)
     if (patch.sidebarWidth !== undefined) setSidebarWidth(bundle.settings.sidebarWidth)
     if (patch.sidebarCollapsed !== undefined) setCollapsed(bundle.settings.sidebarCollapsed)
-    if (patch.hideNoisyEntries !== undefined || patch.hiddenTreePaths !== undefined)
-      setTreeVersion((value) => value + 1)
+    // hiddenTreePaths 由渲染层就地过滤，重建整棵树会让已展开目录塌陷并丢失滚动位置；
+    // hideNoisyEntries 由主进程在 listDir 时过滤，必须重建才能重新拉取目录内容。
+    if (patch.hideNoisyEntries !== undefined) setTreeVersion((value) => value + 1)
   }, [])
 
   const resetSettings = useCallback(async () => {
@@ -899,9 +1123,15 @@ export default function App(): JSX.Element {
         )
         for (const [from, to] of pairs) {
           const ratio = scrollMap.current.get(from)
-          if (ratio === undefined) continue
-          scrollMap.current.delete(from)
-          scrollMap.current.set(to, ratio)
+          if (ratio !== undefined) {
+            scrollMap.current.delete(from)
+            scrollMap.current.set(to, ratio)
+          }
+          const line = editorScrollMap.current.get(from)
+          if (line !== undefined) {
+            editorScrollMap.current.delete(from)
+            editorScrollMap.current.set(to, line)
+          }
         }
         const activeNext = activeIdRef.current ? byPath.get(activeIdRef.current) : undefined
         if (activeNext) setActiveId(activeNext)
@@ -1117,7 +1347,7 @@ export default function App(): JSX.Element {
 
   const selectAllContent = useCallback(() => {
     const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
-    if (!tab || isExcalidrawFile(tab.path)) return
+    if (!tab || isExcalidrawFile(tab.path) || isPdfFile(tab.path) || isImageFile(tab.path)) return
     const editorShown =
       !isMarkdownFile(tab.path) || tab.editing || docTier(tab.content.length) !== 'normal'
     if (editorShown) {
@@ -1158,11 +1388,17 @@ export default function App(): JSX.Element {
         case 'toggle-edit':
           toggleEdit()
           break
+        case 'export-pdf':
+          void exportPdf()
+          break
         case 'close-tab':
           if (activeIdRef.current) requestCloseTab(activeIdRef.current)
           break
         case 'settings':
           setSettingsOpen((open) => !open)
+          break
+        case 'toggle-tabs-list':
+          setTabsListOpen((open) => !open)
           break
         case 'quit':
           requestQuit()
@@ -1216,6 +1452,7 @@ export default function App(): JSX.Element {
       startCreate,
       saveActive,
       toggleEdit,
+      exportPdf,
       requestCloseTab,
       requestQuit,
       openFind,
@@ -1309,6 +1546,19 @@ export default function App(): JSX.Element {
         if (!payload) return
         const tab = tabsRef.current.find((item) => samePath(item.path, payload.path))
         if (!tab || Math.abs(payload.mtimeMs - tab.mtimeMs) < 1) return
+        if (
+          tab.kind === 'pdf' ||
+          tab.kind === 'image' ||
+          isPdfFile(payload.path) ||
+          isImageFile(payload.path)
+        ) {
+          updateTab(tab.path, (item) => ({
+            mtimeMs: payload.mtimeMs,
+            deleted: false,
+            reloadNonce: (item.reloadNonce ?? 0) + 1
+          }))
+          return
+        }
         void window.mdv
           .readDoc(payload.path)
           .then((next) => {
@@ -1335,9 +1585,7 @@ export default function App(): JSX.Element {
       }),
       window.mdv.onDocDeleted((payload) => {
         const tab = tabsRef.current.find((item) => samePath(item.path, payload.path))
-        if (tab) {
-          updateTab(tab.path, { banner: '文件已被删除或移动，保存将重新创建该文件。' })
-        }
+        if (tab) updateTab(tab.path, { deleted: true })
       }),
       window.mdv.onCloseRequest(() => requestQuit()),
       window.mdv.onPathsDropped((paths) => {
@@ -1375,6 +1623,9 @@ export default function App(): JSX.Element {
       } else if (key === 's') {
         event.preventDefault()
         commandRef.current('save')
+      } else if (key === 'p') {
+        event.preventDefault()
+        commandRef.current('export-pdf')
       } else if (key === 'e') {
         event.preventDefault()
         commandRef.current('toggle-edit')
@@ -1395,6 +1646,9 @@ export default function App(): JSX.Element {
       } else if (key === 'w') {
         event.preventDefault()
         commandRef.current('close-tab')
+      } else if (key === 't' && event.shiftKey) {
+        event.preventDefault()
+        setTabsListOpen((open) => !open)
       } else if (key === 'tab') {
         event.preventDefault()
         const list = tabsRef.current
@@ -1538,6 +1792,12 @@ export default function App(): JSX.Element {
 
   const activeIsMd = active ? isMarkdownFile(active.path) : false
   const activeIsDrawing = active ? isExcalidrawFile(active.path) : false
+  const activeIsPdf = !!active && (active.kind === 'pdf' || isPdfFile(active.path))
+  const activeIsImage = !!active && (active.kind === 'image' || isImageFile(active.path))
+  const pdfOutline =
+    active && pdfOutlineState?.path === active.path ? pdfOutlineState.items : null
+  const pdfPage = active && pdfPageState?.path === active.path ? pdfPageState.page : 1
+  const pdfJumpTarget = active && pdfJump?.path === active.path ? pdfJump : null
   const activeTier = active ? docTier(active.content.length) : 'normal'
   const activeLite = activeTier !== 'normal'
   const activeHuge = activeTier === 'huge'
@@ -1546,42 +1806,61 @@ export default function App(): JSX.Element {
     return activeLite ? hasVeryLongLine(content) : false
   }, [active?.content, activeLite])
   const mdAsSource = activeIsMd && activeLite
-  const showPreview = !!active && activeIsMd && !active.editing && !mdAsSource
-  const showEditor = !!active && !activeIsDrawing && (!activeIsMd || mdAsSource || active.editing)
-  const codeReadOnly = !!active && !activeIsDrawing && !active.editing && (!activeIsMd || mdAsSource)
+  const showPreview = !!active && activeIsMd && !active.editing && !mdAsSource && !activeIsPdf
+  const showEditor =
+    !!active &&
+    !activeIsDrawing &&
+    !activeIsPdf &&
+    !activeIsImage &&
+    (!activeIsMd || mdAsSource || active.editing)
+  const codeReadOnly =
+    !!active &&
+    !activeIsDrawing &&
+    !activeIsPdf &&
+    !activeIsImage &&
+    !active.editing &&
+    (!activeIsMd || mdAsSource)
   const showDrawing = !!active && activeIsDrawing
+  const showPdf = !!active && activeIsPdf
+  const showImage = !!active && activeIsImage
 
   const statusLeft = !active
     ? ''
-    : activeIsDrawing
-      ? `${active.name} · 画板${active.editing ? '' : ' · 只读'}${
-          dirty ? ' · 未保存的修改' : ''
-        }${active.externalChanged ? ' · 文件已在外部修改' : ''}`
-      : activeLite
-        ? `${active.name} · 大文件模式${
-            active.editing
-              ? `${dirty ? ' · 未保存的修改' : ''}${
-                  active.externalChanged ? ' · 文件已在外部修改' : ''
-                }`
-              : ' · 只读'
-          }`
-        : codeReadOnly
-          ? `${active.name} · 只读`
-          : `${dirty ? '未保存的修改' : '已保存'}${
-              active.externalChanged ? ' · 文件已在外部修改' : ''
+    : activeIsPdf
+      ? `${active.name} · PDF${
+          active.deleted ? ' · 文件已被删除' : active.externalChanged ? ' · 文件已在外部修改' : ' · 只读'
+        }`
+      : activeIsDrawing
+        ? `${active.name} · 画板${active.editing ? '' : ' · 只读'}${
+            dirty ? ' · 未保存的修改' : ''
+          }${active.externalChanged ? ' · 文件已在外部修改' : ''}`
+        : activeLite
+          ? `${active.name} · 大文件模式${
+              active.editing
+                ? `${dirty ? ' · 未保存的修改' : ''}${
+                    active.externalChanged ? ' · 文件已在外部修改' : ''
+                  }`
+                : ' · 只读'
             }`
+          : codeReadOnly
+            ? `${active.name} · 只读`
+            : `${dirty ? '未保存的修改' : '已保存'}${
+                active.externalChanged ? ' · 文件已在外部修改' : ''
+              }`
 
-  const statusRight = activeIsDrawing
-    ? active?.editing
-      ? 'Ctrl+S 保存 · Ctrl+E 阅读'
-      : 'Ctrl+E 编辑'
-    : activeLite
+  const statusRight = activeIsPdf
+    ? '只读 · 工具栏翻页 / 缩放'
+    : activeIsDrawing
       ? active?.editing
-        ? 'Ctrl+S 保存 · Ctrl+E 阅读 · Ctrl+F 在编辑器内查找'
-        : 'Ctrl+E 编辑 · Ctrl+F 查找'
-      : codeReadOnly
-        ? 'Ctrl+E 编辑 · Ctrl+F 查找'
-        : 'Ctrl+S 保存 · Ctrl+E 阅读 · Ctrl+F 在编辑器内查找'
+        ? 'Ctrl+S 保存 · Ctrl+E 阅读'
+        : 'Ctrl+E 编辑'
+      : activeLite
+        ? active?.editing
+          ? 'Ctrl+S 保存 · Ctrl+E 阅读 · Ctrl+F 在编辑器内查找'
+          : 'Ctrl+E 编辑 · Ctrl+F 查找'
+        : codeReadOnly
+          ? 'Ctrl+E 编辑 · Ctrl+F 查找'
+          : 'Ctrl+S 保存 · Ctrl+E 阅读 · Ctrl+F 在编辑器内查找'
 
   const tabInfos: TabInfo[] = tabs.map((tab) => ({
     path: tab.path,
@@ -1589,10 +1868,16 @@ export default function App(): JSX.Element {
     dirty: isDirty(tab)
   }))
 
+  const deletedEntries: FsEntry[] = tabs
+    .filter((tab) => tab.deleted)
+    .map((tab) => ({ name: tab.name, path: tab.path, isDir: false }))
+
   const menuState: MenuState = {
     hasDoc: !!active,
     editing: !!active?.editing,
     dirty,
+    pdf: activeIsPdf || activeIsImage,
+    canExportPdf: !!active && activeIsMd && !activeIsPdf && activeTier === 'normal',
     sidebarCollapsed: collapsed,
     themeMode: settings.themeMode,
     recents: settings.recents
@@ -1628,6 +1913,11 @@ export default function App(): JSX.Element {
           treeVersion={treeVersion}
           expanded={expandedDirs}
           hiddenPaths={settings.hiddenTreePaths}
+          deletedEntries={deletedEntries}
+          pdfActive={activeIsPdf}
+          pdfOutline={pdfOutline}
+          pdfPage={pdfPage}
+          onJumpPdfPage={jumpPdfPage}
           scrollRef={readerRef}
           onToggleDir={toggleDir}
           onOpen={(path) => void openDoc(path)}
@@ -1643,7 +1933,7 @@ export default function App(): JSX.Element {
 
         <div
           className={`main${active?.editing ? ' editing' : ''}${
-            showEditor || showDrawing ? ' has-editor' : ''
+            showEditor || showDrawing || showPdf ? ' has-editor' : ''
           }`}
         >
           <TabBar
@@ -1657,21 +1947,45 @@ export default function App(): JSX.Element {
             onClose={requestCloseTab}
             onClosePaths={requestClosePaths}
             onNew={() => startCreate('file')}
+            listOpen={tabsListOpen}
+            onToggleList={() => setTabsListOpen((open) => !open)}
           />
 
-          {notice || active?.banner || active?.externalChanged ? (
-            <div className="banner-slot">
+          {notice || active?.deleted || active?.banner || active?.externalChanged ? (
+            <div className="notice-layer">
               {notice ? (
+                <div className="notice-toast" role="status">
+                  <span className="notice-toast-text">{notice}</span>
+                  <button
+                    type="button"
+                    className="mini-btn"
+                    title="关闭"
+                    aria-label="关闭提示"
+                    onClick={() => setNotice(null)}
+                  >
+                    <CloseIcon />
+                  </button>
+                </div>
+              ) : null}
+              {active?.deleted ? (
                 <div className="banner">
-                  <span className="banner-text">{notice}</span>
+                  <span className="banner-text">文件已被外部删除，内容仍保留在标签页中。</span>
                   <span className="banner-actions">
+                    {!activeIsPdf && !activeIsImage ? (
+                      <button
+                        type="button"
+                        className="mini-btn"
+                        onClick={() => void restoreDeleted(active)}
+                      >
+                        保留文件
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="mini-btn"
-                      title="关闭"
-                      onClick={() => setNotice(null)}
+                      onClick={() => requestCloseTab(active.path)}
                     >
-                      <CloseIcon />
+                      关闭标签
                     </button>
                   </span>
                 </div>
@@ -1750,6 +2064,33 @@ export default function App(): JSX.Element {
             ) : null}
           </div>
 
+          {showPdf && active ? (
+            <div className="editor-pane">
+              <Suspense fallback={<div className="editor-fallback">正在加载 PDF…</div>}>
+                <PdfView
+                  key={active.path}
+                  path={active.path}
+                  reloadKey={`${active.mtimeMs}#${active.reloadNonce ?? 0}`}
+                  jumpTarget={pdfJumpTarget}
+                  initialPage={pdfPagesRef.current.get(active.path) ?? 1}
+                  findSignal={pdfFindSignal}
+                  onOutline={handlePdfOutline}
+                  onPageChange={handlePdfPageChange}
+                />
+              </Suspense>
+            </div>
+          ) : null}
+
+          {showImage && active ? (
+            <div className="editor-pane">
+              <ImageView
+                key={active.path}
+                path={active.path}
+                reloadKey={`${active.mtimeMs}#${active.reloadNonce ?? 0}`}
+              />
+            </div>
+          ) : null}
+
           {showDrawing && active ? (
             <div className="editor-pane">
               <Suspense fallback={<div className="editor-fallback">正在加载画板…</div>}>
@@ -1789,6 +2130,9 @@ export default function App(): JSX.Element {
                   readOnly={!active.editing}
                   lite={activeLite}
                   onChange={(next) => updateTab(active.path, { draft: next })}
+                  onPasteImage={handlePasteImage}
+                  initialScrollLine={editorScrollMap.current.get(active.path)}
+                  onScrollLine={(line) => editorScrollMap.current.set(active.path, line)}
                   onReady={(handle) => {
                     editorHandle.current = handle
                   }}
@@ -1808,7 +2152,7 @@ export default function App(): JSX.Element {
             </div>
           ) : null}
 
-          {active ? (
+          {active && !activeIsPdf && !activeIsImage ? (
             <div className="float-actions" role="toolbar" aria-label="文档操作">
               <button
                 type="button"

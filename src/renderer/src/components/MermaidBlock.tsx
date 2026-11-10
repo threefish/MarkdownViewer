@@ -43,16 +43,18 @@ function previewSvg(svg: string, theme: ThemeMode): string {
 interface Props {
   code: string
   theme: ThemeMode
+  eager?: boolean
 }
 
-export function MermaidBlock({ code, theme }: Props): React.JSX.Element {
+export function MermaidBlock({ code, theme, eager }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
-  const [visible, setVisible] = useState(false)
+  const [visible, setVisible] = useState(eager ?? false)
   const [svg, setSvg] = useState('')
   const [error, setError] = useState('')
   const [preview, setPreview] = useState<string | null>(null)
 
   useEffect(() => {
+    if (eager) return
     const element = hostRef.current
     if (!element) return
     if (typeof IntersectionObserver === 'undefined') {
@@ -70,7 +72,7 @@ export function MermaidBlock({ code, theme }: Props): React.JSX.Element {
     )
     observer.observe(element)
     return () => observer.disconnect()
-  }, [])
+  }, [eager])
 
   useEffect(() => {
     if (!visible) return

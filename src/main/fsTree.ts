@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { FsEntry } from '../shared/types'
-import { isTextFile } from '../shared/fileKinds'
+import { isImageFile, isPdfFile, isTextFile } from '../shared/fileKinds'
 
 const NOISE_DIRS = new Set(['node_modules'])
 const collator = new Intl.Collator('zh-Hans', { numeric: true, sensitivity: 'base' })
@@ -18,7 +18,10 @@ export async function listDirectory(dir: string, hideNoisy = true): Promise<FsEn
     }
     if (entry.isDirectory()) {
       items.push({ name: entry.name, path: path.join(real, entry.name), isDir: true })
-    } else if (entry.isFile() && isTextFile(entry.name)) {
+    } else if (
+      entry.isFile() &&
+      (isTextFile(entry.name) || isPdfFile(entry.name) || isImageFile(entry.name))
+    ) {
       items.push({ name: entry.name, path: path.join(real, entry.name), isDir: false })
     }
   }
