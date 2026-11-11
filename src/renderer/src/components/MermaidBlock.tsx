@@ -47,9 +47,10 @@ interface Props {
   code: string
   theme: ThemeMode
   eager?: boolean
+  line?: string
 }
 
-export function MermaidBlock({ code, theme, eager }: Props): React.JSX.Element {
+export function MermaidBlock({ code, theme, eager, line }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(eager ?? false)
   const [svg, setSvg] = useState('')
@@ -125,7 +126,7 @@ export function MermaidBlock({ code, theme, eager }: Props): React.JSX.Element {
 
   return (
     <>
-      <div className="mermaid-block" ref={hostRef}>
+      <div className="mermaid-block" ref={hostRef} data-line={line}>
         {error ? (
           <div className="mermaid-error">
             <div className="mermaid-error-title">图表渲染失败</div>

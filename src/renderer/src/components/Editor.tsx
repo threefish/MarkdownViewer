@@ -35,6 +35,8 @@ import { tags } from '@lezer/highlight'
 import type { ThemeMode } from '../../../shared/types'
 import { isDarkTheme } from '../../../shared/themes'
 import { loadLanguage } from '../lib/codeLanguage'
+import { formatMarkdown, type FormatAction } from '../lib/mdFormat'
+import { TASK_LINE_PATTERN } from '../lib/text'
 
 const SEARCH_PHRASES = {
   Find: '查找',
@@ -162,6 +164,10 @@ export interface EditorHandle {
   undo(): void
   redo(): void
   selectAll(): void
+  applyFormat(action: FormatAction): void
+  getTopLine(): number
+  scrollToLine(line: number): void
+  toggleTaskLine(line: number, checked: boolean): void
 }
 
 interface Props {
@@ -506,6 +512,7 @@ export function Editor({
 }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
+  const thumbRef = useRef<HTMLDivElement>(null)
   const changeRef = useRef(onChange)
   const readyRef = useRef(onReady)
   const pasteImageRef = useRef(onPasteImage)
@@ -624,7 +631,9 @@ export function Editor({
           themeCompartment.current.of(editorTheme(theme)),
           EditorView.theme({ '&': { fontSize: 'var(--editor-size, 13.5px)' } }),
           EditorView.updateListener.of((update) => {
+            if (update.viewportChanged || update.heightChanged) scheduleThumb()
             if (!update.docChanged) return
+            scheduleThumb()
             const next = update.state.doc.toString()
             emittedRef.current = next
             if (suppressRef.current) return
@@ -635,6 +644,34 @@ export function Editor({
       })
     })
     viewRef.current = view
+    // 分屏时原生滚动条让位给贴边布局，用悬浮滑条代替（仅 hover 可见、可拖拽）。
+    function updateThumb(): void {
+      const thumb = thumbRef.current
+      if (!thumb || !view.dom.isConnected) return
+      const scroller = view.scrollDOM
+      const range = scroller.scrollHeight - scroller.clientHeight
+      if (range <= 1) {
+        thumb.style.display = 'none'
+        return
+      }
+      thumb.style.display = ''
+      const height = Math.max(28, Math.round((scroller.clientHeight / scroller.scrollHeight) * scroller.clientHeight))
+      const top = Math.round((scroller.scrollTop / range) * (scroller.clientHeight - height))
+      thumb.style.height = `${height}px`
+      thumb.style.transform = `translateY(${top}px)`
+    }
+    let thumbFrame = 0
+    function scheduleThumb(): void {
+      if (thumbFrame) return
+      thumbFrame = window.requestAnimationFrame(() => {
+        thumbFrame = 0
+        updateThumb()
+      })
+    }
+    const thumbObserver = new ResizeObserver(scheduleThumb)
+    thumbObserver.observe(view.scrollDOM)
+    thumbObserver.observe(view.contentDOM)
+    scheduleThumb()
     readyRef.current({
       focus: () => view.focus(),
       openSearch: () => openSearchPanel(view),
@@ -649,6 +686,42 @@ export function Editor({
       selectAll: () => {
         view.focus()
         view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } })
+      },
+      applyFormat: (action) => {
+        const { from, to } = view.state.selection.main
+        const result = formatMarkdown(view.state.doc.toString(), from, to, action)
+        view.dispatch({
+          changes: [{ from: result.from, to: result.to, insert: result.insert }, ...(result.extra ?? [])],
+          selection: { anchor: result.selFrom, head: result.selTo },
+          userEvent: 'input',
+          scrollIntoView: true
+        })
+        view.focus()
+      },
+      getTopLine: () => {
+        const pos = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from
+        return view.state.doc.lineAt(pos).number
+      },
+      scrollToLine: (line) => {
+        const n = Math.max(1, Math.min(Math.round(line), view.state.doc.lines))
+        view.requestMeasure({
+          read: (target) => target.lineBlockAt(target.state.doc.line(n).from).top,
+          write: (top, target) => {
+            target.scrollDOM.scrollTop = top
+          }
+        })
+      },
+      toggleTaskLine: (line, checked) => {
+        const n = Math.max(1, Math.min(Math.round(line), view.state.doc.lines))
+        const docLine = view.state.doc.line(n)
+        const match = TASK_LINE_PATTERN.exec(docLine.text)
+        if (!match) return
+        if (/\[[xX]\]/.test(match[0]) === checked) return
+        const from = docLine.from + match[1].length
+        view.dispatch({
+          changes: { from, to: from + 3, insert: checked ? '[x]' : '[ ]' },
+          userEvent: 'input'
+        })
       }
     })
     let scrollFrame = 0
@@ -659,6 +732,7 @@ export function Editor({
         if (!view.dom.isConnected) return
         const pos = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from
         scrollLineRef.current?.(view.state.doc.lineAt(pos).number)
+        updateThumb()
       })
     }
     view.scrollDOM.addEventListener('scroll', trackScroll, { passive: true })
@@ -675,6 +749,8 @@ export function Editor({
     }
     return () => {
       window.cancelAnimationFrame(scrollFrame)
+      window.cancelAnimationFrame(thumbFrame)
+      thumbObserver.disconnect()
       view.scrollDOM.removeEventListener('scroll', trackScroll)
       view.destroy()
       viewRef.current = null
@@ -765,5 +841,38 @@ export function Editor({
     emittedRef.current = value
   }, [value])
 
-  return <div className="editor-host" ref={hostRef} />
+  const onThumbPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const view = viewRef.current
+    const thumb = thumbRef.current
+    if (!view || !thumb) return
+    const scroller = view.scrollDOM
+    const track = scroller.clientHeight - thumb.offsetHeight
+    const range = scroller.scrollHeight - scroller.clientHeight
+    if (track <= 0 || range <= 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    const startY = event.clientY
+    const startTop = scroller.scrollTop
+    thumb.setPointerCapture(event.pointerId)
+    thumb.classList.add('dragging')
+    const move = (e: PointerEvent): void => {
+      scroller.scrollTop = startTop + ((e.clientY - startY) / track) * range
+    }
+    const up = (e: PointerEvent): void => {
+      thumb.classList.remove('dragging')
+      thumb.removeEventListener('pointermove', move)
+      thumb.removeEventListener('pointerup', up)
+      thumb.removeEventListener('pointercancel', up)
+      if (thumb.hasPointerCapture(e.pointerId)) thumb.releasePointerCapture(e.pointerId)
+    }
+    thumb.addEventListener('pointermove', move)
+    thumb.addEventListener('pointerup', up)
+    thumb.addEventListener('pointercancel', up)
+  }
+
+  return (
+    <div className="editor-host" ref={hostRef}>
+      <div className="cm-scroll-thumb" ref={thumbRef} onPointerDown={onThumbPointerDown} />
+    </div>
+  )
 }

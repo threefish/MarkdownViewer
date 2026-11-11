@@ -10,6 +10,7 @@ export type MenuAction =
   | 'open-path'
   | 'save'
   | 'toggle-edit'
+  | 'toggle-edit-preview'
   | 'export-pdf'
   | 'close-tab'
   | 'toggle-tabs-list'
@@ -34,6 +35,8 @@ export interface MenuState {
   dirty: boolean
   pdf: boolean
   canExportPdf: boolean
+  editPreview: boolean
+  canEditPreview: boolean
   sidebarCollapsed: boolean
   themeMode: ThemePreference
   recents: RecentDoc[]
@@ -116,6 +119,12 @@ function buildGroups(state: MenuState): Group[] {
           hint: 'Ctrl+E',
           disabled: !state.hasDoc || state.pdf,
           action: 'toggle-edit'
+        },
+        {
+          label: state.editPreview ? '隐藏编辑预览' : '显示编辑预览',
+          hint: 'Ctrl+Shift+E',
+          disabled: !state.canEditPreview,
+          action: 'toggle-edit-preview'
         },
         {
           label: '导出 PDF…',

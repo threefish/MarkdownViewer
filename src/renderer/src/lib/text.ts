@@ -4,7 +4,7 @@ export function stripFrontmatter(markdown: string): string {
   return match ? markdown.slice(match[0].length) : markdown
 }
 
-const TASK_LINE_PATTERN = /^((?:\s*>)*\s*(?:[-*+]|\d+[.)])\s+)\[[ xX]\]/
+export const TASK_LINE_PATTERN = /^((?:\s*>)*\s*(?:[-*+]|\d+[.)])\s+)\[[ xX]\]/
 
 // 阅读模式勾选任务项时改写源码对应行；行首不是任务标记则返回 null。
 export function applyTaskToggle(source: string, line: number, checked: boolean): string | null {

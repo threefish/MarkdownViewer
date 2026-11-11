@@ -7,7 +7,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type JSX
+  type JSX,
+  type PointerEvent as ReactPointerEvent
 } from 'react'
 import type { AppInfo, ContentFont, DocPayload, FsEntry, Settings, ThemeMode } from '../../shared/types'
 import { isThemePreference } from '../../shared/themes'
@@ -17,19 +18,22 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import type { EditorHandle } from './components/Editor'
 import { EmptyState } from './components/EmptyState'
 import { HiddenRestoreDialog } from './components/HiddenRestoreDialog'
-import { CloseIcon, EyeIcon, PencilIcon, SearchIcon } from './components/Icons'
+import { CloseIcon, EyeIcon, PencilIcon, SearchIcon, SplitIcon } from './components/Icons'
 import { clearImageViewState, ImageView } from './components/ImageView'
 import type { MenuAction, MenuState } from './components/MenuBar'
+import { MdToolbar } from './components/MdToolbar'
 import { NewEntryDialog } from './components/NewEntryDialog'
 import { SearchBar } from './components/SearchBar'
 import { SettingsDialog } from './components/SettingsDialog'
 import { Sidebar } from './components/Sidebar'
+import { SplitPreview, type SplitPreviewHandle } from './components/SplitPreview'
 import { TabBar, type TabInfo } from './components/TabBar'
 import { TitleBar } from './components/TitleBar'
 import { WidthControl } from './components/WidthControl'
 import { MarkdownDocument } from './lib/markdown'
 import { languageKeyForPath } from './lib/codeLanguage'
 import { docTier, hasVeryLongLine, isLargeDoc } from './lib/largeFile'
+import type { FormatAction } from './lib/mdFormat'
 import { classifyHref } from './lib/pathResolve'
 import type { PdfOutlineEntry } from './lib/pdfOutline'
 import { applyTaskToggle, errorMessage } from './lib/text'
@@ -58,6 +62,8 @@ const INITIAL_SETTINGS: Settings = {
   editorFontSize: 13.5,
   editorWordWrap: true,
   editorLineNumbers: true,
+  editPreview: true,
+  editSplitRatio: 0.5,
   pastedImageDir: 'assets',
   newFileExt: 'md',
   restoreSession: true,
@@ -76,6 +82,9 @@ const INITIAL_SETTINGS: Settings = {
 
 const MIN_SIDEBAR_WIDTH = 220
 const MAX_SIDEBAR_WIDTH = 520
+
+const MIN_SPLIT_RATIO = 0.25
+const MAX_SPLIT_RATIO = 0.75
 
 const PROSE_FONTS: Record<ContentFont, string> = {
   sans: 'var(--font-sans)',
@@ -188,6 +197,7 @@ export default function App(): JSX.Element {
   const [roots, setRoots] = useState<string[]>([])
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
   const [sidebarWidth, setSidebarWidth] = useState(284)
+  const [splitRatio, setSplitRatio] = useState(0.5)
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('files')
   const [collapsed, setCollapsed] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -226,6 +236,10 @@ export default function App(): JSX.Element {
   const activeIdRef = useRef<string | null>(null)
   const readerRef = useRef<HTMLDivElement>(null)
   const editorHandle = useRef<EditorHandle | null>(null)
+  const workspaceRef = useRef<HTMLDivElement>(null)
+  const previewHandle = useRef<SplitPreviewHandle | null>(null)
+  const leaderRef = useRef<'editor' | 'preview'>('editor')
+  const guardRef = useRef({ editor: 0, preview: 0 })
   const rootsRef = useRef<string[]>([])
   const settingsRef = useRef<Settings>(INITIAL_SETTINGS)
   const restoredRef = useRef(false)
@@ -294,6 +308,10 @@ export default function App(): JSX.Element {
   useEffect(() => {
     document.documentElement.style.setProperty('--sidebar-w', `${sidebarWidth}px`)
   }, [sidebarWidth])
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--split-ratio', String(splitRatio))
+  }, [splitRatio])
 
   useEffect(() => {
     settingsRef.current = settings
@@ -964,6 +982,7 @@ export default function App(): JSX.Element {
     setTheme(bundle.theme)
     if (patch.contentWidth !== undefined) setContentWidth(bundle.settings.contentWidth)
     if (patch.sidebarWidth !== undefined) setSidebarWidth(bundle.settings.sidebarWidth)
+    if (patch.editSplitRatio !== undefined) setSplitRatio(bundle.settings.editSplitRatio)
     if (patch.sidebarCollapsed !== undefined) setCollapsed(bundle.settings.sidebarCollapsed)
     // hiddenTreePaths 由渲染层就地过滤，重建整棵树会让已展开目录塌陷并丢失滚动位置；
     // hideNoisyEntries 由主进程在 listDir 时过滤，必须重建才能重新拉取目录内容。
@@ -977,6 +996,7 @@ export default function App(): JSX.Element {
     setTheme(bundle.theme)
     setContentWidth(bundle.settings.contentWidth)
     setSidebarWidth(bundle.settings.sidebarWidth)
+    setSplitRatio(bundle.settings.editSplitRatio)
     setCollapsed(bundle.settings.sidebarCollapsed)
     setTreeVersion((value) => value + 1)
   }, [])
@@ -1000,6 +1020,16 @@ export default function App(): JSX.Element {
     },
     []
   )
+
+  const persistSplitRatio = useCallback((next: number) => {
+    const ratio =
+      Math.round(Math.min(MAX_SPLIT_RATIO, Math.max(MIN_SPLIT_RATIO, next)) * 100) / 100
+    setSplitRatio(ratio)
+    void window.mdv.patchSettings({ editSplitRatio: ratio }).then((bundle) => {
+      settingsRef.current = bundle.settings
+      setSettings(bundle.settings)
+    })
+  }, [])
 
   const toggleWidthPanel = useCallback(() => setWidthOpen((open) => !open), [])
   const closeWidthPanel = useCallback(() => setWidthOpen(false), [])
@@ -1345,6 +1375,32 @@ export default function App(): JSX.Element {
     if (id) scrollMap.current.set(id, ratioOf(readerRef.current))
   }, [])
 
+  const toggleEditPreview = useCallback(() => {
+    const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
+    if (!tab || !tab.editing || !isMarkdownFile(tab.path)) return
+    if (docTier(tab.content.length) !== 'normal') return
+    void updateSettings({ editPreview: !settingsRef.current.editPreview })
+  }, [updateSettings])
+
+  const handleSplitTaskToggle = useCallback((line: number, checked: boolean) => {
+    const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
+    if (!tab || !tab.editing || !isMarkdownFile(tab.path)) return
+    editorHandle.current?.toggleTaskLine(line, checked)
+  }, [])
+
+  const getEditorTopLine = useCallback((): number | null => {
+    return editorHandle.current?.getTopLine() ?? null
+  }, [])
+
+  const scrollEditorToLine = useCallback((line: number) => {
+    guardRef.current.editor = performance.now() + 150
+    editorHandle.current?.scrollToLine(line)
+  }, [])
+
+  const handleFormat = useCallback((action: FormatAction) => {
+    editorHandle.current?.applyFormat(action)
+  }, [])
+
   const selectAllContent = useCallback(() => {
     const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
     if (!tab || isExcalidrawFile(tab.path) || isPdfFile(tab.path) || isImageFile(tab.path)) return
@@ -1387,6 +1443,9 @@ export default function App(): JSX.Element {
           break
         case 'toggle-edit':
           toggleEdit()
+          break
+        case 'toggle-edit-preview':
+          toggleEditPreview()
           break
         case 'export-pdf':
           void exportPdf()
@@ -1452,6 +1511,7 @@ export default function App(): JSX.Element {
       startCreate,
       saveActive,
       toggleEdit,
+      toggleEditPreview,
       exportPdf,
       requestCloseTab,
       requestQuit,
@@ -1480,6 +1540,7 @@ export default function App(): JSX.Element {
         setTheme(bundle.theme)
         setContentWidth(saved.contentWidth)
         setSidebarWidth(saved.sidebarWidth)
+        setSplitRatio(saved.editSplitRatio)
         setCollapsed(saved.sidebarCollapsed)
         rootsRef.current = restore ? saved.roots : []
         setRoots(rootsRef.current)
@@ -1628,7 +1689,7 @@ export default function App(): JSX.Element {
         commandRef.current('export-pdf')
       } else if (key === 'e') {
         event.preventDefault()
-        commandRef.current('toggle-edit')
+        commandRef.current(event.shiftKey ? 'toggle-edit-preview' : 'toggle-edit')
       } else if (key === 'a') {
         const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
         // 画板的全选由 Excalidraw 自己处理，这里连 preventDefault 都不能做。
@@ -1786,10 +1847,6 @@ export default function App(): JSX.Element {
     updateTab(tab.path, { externalChanged: false, externalDisk: null })
   }
 
-  const docKey = active
-    ? `${active.path}#${active.mtimeMs}#${active.content.length}#${active.editing ? 'e' : 'v'}`
-    : ''
-
   const activeIsMd = active ? isMarkdownFile(active.path) : false
   const activeIsDrawing = active ? isExcalidrawFile(active.path) : false
   const activeIsPdf = !!active && (active.kind === 'pdf' || isPdfFile(active.path))
@@ -1823,6 +1880,80 @@ export default function App(): JSX.Element {
   const showDrawing = !!active && activeIsDrawing
   const showPdf = !!active && activeIsPdf
   const showImage = !!active && activeIsImage
+
+  const splitAllowed =
+    !!active &&
+    activeIsMd &&
+    active.editing &&
+    activeTier === 'normal' &&
+    !activeIsPdf &&
+    !activeIsImage
+  const splitActive = splitAllowed && settings.editPreview
+  const showMdToolbar = !!active && activeIsMd && active.editing
+
+  const docKey = active
+    ? `${active.path}#${active.mtimeMs}#${active.content.length}#${active.editing ? 'e' : 'v'}${
+        splitActive ? '#s' : ''
+      }`
+    : ''
+
+  // 分屏双向滚动采用 leader 选举：最后交互的一侧驱动另一侧，程序化滚动由 guard 时间戳抑制回环。
+  useEffect(() => {
+    leaderRef.current = 'editor'
+    if (!splitActive) {
+      previewHandle.current = null
+      return
+    }
+    const workspace = workspaceRef.current
+    if (!workspace) return
+    const pick = (event: Event): void => {
+      const target = event.target as HTMLElement | null
+      if (!target?.closest) return
+      if (target.closest('.editor-pane')) leaderRef.current = 'editor'
+      else if (target.closest('.reader-wrap')) leaderRef.current = 'preview'
+    }
+    workspace.addEventListener('pointerdown', pick, true)
+    workspace.addEventListener('wheel', pick, { capture: true, passive: true })
+    workspace.addEventListener('keydown', pick, true)
+    return () => {
+      workspace.removeEventListener('pointerdown', pick, true)
+      workspace.removeEventListener('wheel', pick, true)
+      workspace.removeEventListener('keydown', pick, true)
+    }
+  }, [splitActive, activeId])
+
+  const startSplitResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return
+      event.preventDefault()
+      const workspace = workspaceRef.current
+      if (!workspace) return
+      const startX = event.clientX
+      const startRatio = splitRatio
+      const width = workspace.getBoundingClientRect().width
+      let last = startRatio
+      document.body.classList.add('split-resizing')
+      const onMove = (moveEvent: PointerEvent): void => {
+        if (width <= 0) return
+        last = Math.min(
+          MAX_SPLIT_RATIO,
+          Math.max(MIN_SPLIT_RATIO, startRatio + (moveEvent.clientX - startX) / width)
+        )
+        document.documentElement.style.setProperty('--split-ratio', String(last))
+      }
+      const onUp = (): void => {
+        document.body.classList.remove('split-resizing')
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointercancel', onUp)
+        persistSplitRatio(last)
+      }
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointercancel', onUp)
+    },
+    [persistSplitRatio, splitRatio]
+  )
 
   const statusLeft = !active
     ? ''
@@ -1878,6 +2009,8 @@ export default function App(): JSX.Element {
     dirty,
     pdf: activeIsPdf || activeIsImage,
     canExportPdf: !!active && activeIsMd && !activeIsPdf && activeTier === 'normal',
+    editPreview: splitActive,
+    canEditPreview: splitAllowed,
     sidebarCollapsed: collapsed,
     themeMode: settings.themeMode,
     recents: settings.recents
@@ -1934,7 +2067,7 @@ export default function App(): JSX.Element {
         <div
           className={`main${active?.editing ? ' editing' : ''}${
             showEditor || showDrawing || showPdf ? ' has-editor' : ''
-          }`}
+          }${splitActive ? ' split' : ''}`}
         >
           <TabBar
             tabs={tabInfos}
@@ -2025,44 +2158,70 @@ export default function App(): JSX.Element {
             </div>
           ) : null}
 
-          <div className={`reader-wrap${active && !showPreview ? ' is-hidden' : ''}`}>
-            <div className="reader" ref={readerRef} onScroll={handleScroll}>
-              {showPreview && active ? (
-                <div className="doc">
-                  <article className="markdown-body">
-                    <MarkdownDocument
-                      content={previewContent}
-                      baseDir={active.root}
-                      theme={theme}
-                      onLink={handleLink}
-                      onEditScene={openSceneForEdit}
-                      onTaskToggle={handleTaskToggle}
-                    />
-                  </article>
-                  <footer className="doc-foot">
-                    {active.name} · {new Date(active.mtimeMs).toLocaleString('zh-CN')}
-                    {dirty ? ' · 有未保存的修改' : ''}
-                  </footer>
-                </div>
-              ) : active ? null : (
-                <EmptyState
-                  recents={settings.recents}
-                  onOpen={(path) => void openDoc(path)}
-                  onOpenFile={() => void pickFile()}
-                  onOpenFolder={() => void pickFolder()}
-                />
-              )}
-            </div>
+          {showMdToolbar ? <MdToolbar key="md-toolbar" onFormat={handleFormat} /> : null}
 
-            {showPreview && active ? (
-              <SearchBar
-                open={active.searchOpen}
-                docKey={docKey}
-                scroller={readerRef}
-                onClose={() => closeSearch(active.path)}
-              />
-            ) : null}
-          </div>
+          <div className="workspace" ref={workspaceRef}>
+            <div
+              className={`reader-wrap${active && !showPreview && !splitActive ? ' is-hidden' : ''}`}
+            >
+              {splitActive && active ? (
+                <SplitPreview
+                  key={active.path}
+                  draft={previewContent}
+                  baseDir={active.root}
+                  theme={theme}
+                  onLink={handleLink}
+                  onEditScene={openSceneForEdit}
+                  onTaskToggle={handleSplitTaskToggle}
+                  scrollerRef={readerRef}
+                  onScroll={handleScroll}
+                  leaderRef={leaderRef}
+                  guardRef={guardRef}
+                  getEditorTopLine={getEditorTopLine}
+                  scrollEditorToLine={scrollEditorToLine}
+                  onReady={(handle) => {
+                    previewHandle.current = handle
+                  }}
+                />
+              ) : (
+                <div className="reader" ref={readerRef} onScroll={handleScroll}>
+                  {showPreview && active ? (
+                    <div className="doc">
+                      <article className="markdown-body">
+                        <MarkdownDocument
+                          content={previewContent}
+                          baseDir={active.root}
+                          theme={theme}
+                          onLink={handleLink}
+                          onEditScene={openSceneForEdit}
+                          onTaskToggle={handleTaskToggle}
+                        />
+                      </article>
+                      <footer className="doc-foot">
+                        {active.name} · {new Date(active.mtimeMs).toLocaleString('zh-CN')}
+                        {dirty ? ' · 有未保存的修改' : ''}
+                      </footer>
+                    </div>
+                  ) : active ? null : (
+                    <EmptyState
+                      recents={settings.recents}
+                      onOpen={(path) => void openDoc(path)}
+                      onOpenFile={() => void pickFile()}
+                      onOpenFolder={() => void pickFolder()}
+                    />
+                  )}
+                </div>
+              )}
+
+              {showPreview && active ? (
+                <SearchBar
+                  open={active.searchOpen}
+                  docKey={docKey}
+                  scroller={readerRef}
+                  onClose={() => closeSearch(active.path)}
+                />
+              ) : null}
+            </div>
 
           {showPdf && active ? (
             <div className="editor-pane">
@@ -2117,9 +2276,19 @@ export default function App(): JSX.Element {
             </div>
           ) : null}
 
+          {splitActive ? (
+            <div
+              className="split-resizer"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整编辑与预览宽度"
+              onPointerDown={startSplitResize}
+            />
+          ) : null}
+
           {showEditor && active ? (
             <div className="editor-pane">
-              <Suspense fallback={<div className="editor-fallback">正在加载编辑器…</div>}>
+              <Suspense key="editor" fallback={<div className="editor-fallback">正在加载编辑器…</div>}>
                 <Editor
                   key={active.path}
                   value={active.draft ?? active.content}
@@ -2132,25 +2301,24 @@ export default function App(): JSX.Element {
                   onChange={(next) => updateTab(active.path, { draft: next })}
                   onPasteImage={handlePasteImage}
                   initialScrollLine={editorScrollMap.current.get(active.path)}
-                  onScrollLine={(line) => editorScrollMap.current.set(active.path, line)}
+                  onScrollLine={(line) => {
+                    editorScrollMap.current.set(active.path, line)
+                    if (
+                      splitActive &&
+                      leaderRef.current === 'editor' &&
+                      performance.now() >= guardRef.current.editor
+                    ) {
+                      previewHandle.current?.syncToLine(line)
+                    }
+                  }}
                   onReady={(handle) => {
                     editorHandle.current = handle
                   }}
                 />
               </Suspense>
-              <div className="editor-status">
-                <span>{statusLeft}</span>
-                <span className="status-actions">
-                  {statusRight}
-                  {activeHuge && !active.editing ? (
-                    <button type="button" className="mini-btn" onClick={toggleEdit}>
-                      启用编辑
-                    </button>
-                  ) : null}
-                </span>
-              </div>
             </div>
           ) : null}
+          </div>
 
           {active && !activeIsPdf && !activeIsImage ? (
             <div className="float-actions" role="toolbar" aria-label="文档操作">
@@ -2182,6 +2350,17 @@ export default function App(): JSX.Element {
               >
                 <EyeIcon />
               </button>
+              {splitAllowed ? (
+                <button
+                  type="button"
+                  className={`float-btn${splitActive ? ' active' : ''}`}
+                  title={splitActive ? '隐藏编辑预览 (Ctrl+Shift+E)' : '显示编辑预览 (Ctrl+Shift+E)'}
+                  aria-pressed={splitActive}
+                  onClick={toggleEditPreview}
+                >
+                  <SplitIcon />
+                </button>
+              ) : null}
               {activeIsDrawing ? null : (
                 <>
                   <button

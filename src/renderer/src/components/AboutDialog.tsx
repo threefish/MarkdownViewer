@@ -31,6 +31,7 @@ const SHORTCUT_COLUMNS: ShortcutGroup[][] = [
       title: '视图与设置',
       shortcuts: [
         { keys: [['Ctrl', 'E']], label: '切换阅读 / 编辑' },
+        { keys: [['Ctrl', 'Shift', 'E']], label: '显示 / 隐藏编辑预览' },
         { keys: [['Ctrl', 'B']], label: '显示 / 隐藏侧栏' },
         { keys: [['Ctrl', 'F']], label: '查找' },
         { keys: [['Ctrl', ',']], label: '打开设置' },

@@ -1,4 +1,4 @@
-import { Children, isValidElement, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Children, isValidElement, memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -24,10 +24,10 @@ const TASK_LINE = 'mdvtaskline'
 
 const schema: Schema = {
   ...defaultSchema,
-  tagNames: [...(defaultSchema.tagNames ?? []), 'details', 'summary', 'kbd', 'mark', 'sup', 'sub', 'ins', 'del'],
+  tagNames: [...(defaultSchema.tagNames ?? []), 'details', 'summary', 'kbd', 'mark', 'sup', 'sub', 'ins', 'del', 'u'],
   attributes: {
     ...defaultSchema.attributes,
-    '*': [...(defaultSchema.attributes?.['*'] ?? []), 'className'],
+    '*': [...(defaultSchema.attributes?.['*'] ?? []), 'className', 'data*'],
     a: [...(defaultSchema.attributes?.a ?? []), 'href', 'title'],
     img: [...(defaultSchema.attributes?.img ?? []), 'src', 'alt', 'title', 'width', 'height'],
     th: [...(defaultSchema.attributes?.th ?? []), 'align'],
@@ -89,6 +89,22 @@ function lineOf(node: Element | undefined, offset: number): number {
   return Number.isInteger(bodyLine) && bodyLine > 0 ? bodyLine + offset : 0
 }
 
+const BLOCK_TAGS = new Set([
+  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'pre',
+  'table', 'thead', 'tbody', 'tr', 'hr', 'div', 'details', 'summary',
+  'dl', 'dt', 'dd', 'figure', 'figcaption', 'section', 'article', 'header', 'footer', 'aside', 'nav'
+])
+
+// 分屏预览的滚动同步锚点：把块级元素的源码行号写进 data-line（仅 lineAnchors 时启用）。
+function markBlockLines() {
+  return (tree: Root): void => {
+    visit(tree, 'element', (node: Element) => {
+      const line = node.position?.start.line
+      if (line && BLOCK_TAGS.has(node.tagName)) node.properties.dataLine = String(line)
+    })
+  }
+}
+
 function textOf(node: ReactNode): string {
   if (node === null || node === undefined || typeof node === 'boolean') return ''
   if (typeof node === 'string' || typeof node === 'number') return String(node)
@@ -109,7 +125,8 @@ function CodeBlock({ children, theme, eager, ...rest }: CodeBlockProps): React.J
     const props = first.props as { className?: string; children?: ReactNode }
     const language = /language-([\w-]+)/.exec(props.className ?? '')?.[1] ?? ''
     if (language === 'mermaid') {
-      return <MermaidBlock code={textOf(props.children).trim()} theme={theme} eager={eager} />
+      const dataLine = (rest as { 'data-line'?: string })['data-line']
+      return <MermaidBlock code={textOf(props.children).trim()} theme={theme} eager={eager} line={dataLine} />
     }
     return (
       <div className="code-block">
@@ -137,16 +154,18 @@ interface Props {
   onEditScene?: (path: string) => void
   onTaskToggle?: (line: number, checked: boolean) => void
   eager?: boolean
+  lineAnchors?: boolean
 }
 
-export function MarkdownDocument({
+export const MarkdownDocument = memo(function MarkdownDocument({
   content,
   baseDir,
   theme,
   onLink,
   onEditScene,
   onTaskToggle,
-  eager
+  eager,
+  lineAnchors
 }: Props): React.JSX.Element {
   const { body, lineOffset } = useMemo(() => {
     const stripped = stripFrontmatter(content)
@@ -169,12 +188,13 @@ export function MarkdownDocument({
       [markExcalidrawEmbeds, { baseDir }],
       [rewriteLocalImages, { baseDir }],
       markTaskCheckboxLines,
+      ...(lineAnchors ? [markBlockLines] : []),
       [rehypeSanitize, schema],
       [rehypeKatex, { throwOnError: false, errorColor: '#c95c5c' }],
       rehypeSlug,
       [rehypeHighlight, { detect: false, ignoreMissing: true }]
     ],
-    [baseDir]
+    [baseDir, lineAnchors]
   )
 
   const components = useMemo<Components>(
@@ -281,4 +301,4 @@ export function MarkdownDocument({
       ) : null}
     </>
   )
-}
+})

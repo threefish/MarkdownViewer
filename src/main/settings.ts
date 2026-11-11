@@ -91,6 +91,10 @@ const MIN_EDITOR_FONT = 12
 const MAX_EDITOR_FONT = 20
 export const DEFAULT_EDITOR_FONT = 13.5
 
+const MIN_SPLIT_RATIO = 0.25
+const MAX_SPLIT_RATIO = 0.75
+export const DEFAULT_SPLIT_RATIO = 0.5
+
 const MIN_WINDOW_WIDTH = 760
 const MIN_WINDOW_HEIGHT = 480
 
@@ -103,6 +107,11 @@ function normalizeWidth(value: unknown): number {
 function normalizeSidebar(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_SIDEBAR
   return Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, Math.round(value)))
+}
+
+function normalizeSplitRatio(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_SPLIT_RATIO
+  return Math.round(Math.min(MAX_SPLIT_RATIO, Math.max(MIN_SPLIT_RATIO, value)) * 100) / 100
 }
 
 function normalizeSettingsDrawer(value: unknown): number {
@@ -173,6 +182,8 @@ function defaults(): Settings {
     editorFontSize: DEFAULT_EDITOR_FONT,
     editorWordWrap: true,
     editorLineNumbers: true,
+    editPreview: true,
+    editSplitRatio: DEFAULT_SPLIT_RATIO,
     pastedImageDir: 'assets',
     newFileExt: 'md',
     restoreSession: true,
@@ -209,6 +220,8 @@ export function getSettings(): Settings {
       editorFontSize: normalizeEditorFont(parsed.editorFontSize),
       editorWordWrap: normalizeBool(parsed.editorWordWrap, true),
       editorLineNumbers: normalizeBool(parsed.editorLineNumbers, true),
+      editPreview: normalizeBool(parsed.editPreview, true),
+      editSplitRatio: normalizeSplitRatio(parsed.editSplitRatio),
       pastedImageDir: normalizePastedImageDir(parsed.pastedImageDir),
       newFileExt: normalizeNewFileExt(parsed.newFileExt),
       restoreSession: normalizeBool(parsed.restoreSession, true),
@@ -247,6 +260,9 @@ export function patchSettings(patch: Partial<Settings>): Settings {
     next.editorWordWrap = normalizeBool(patch.editorWordWrap, true)
   if (patch.editorLineNumbers !== undefined)
     next.editorLineNumbers = normalizeBool(patch.editorLineNumbers, true)
+  if (patch.editPreview !== undefined) next.editPreview = normalizeBool(patch.editPreview, true)
+  if (patch.editSplitRatio !== undefined)
+    next.editSplitRatio = normalizeSplitRatio(patch.editSplitRatio)
   if (patch.pastedImageDir !== undefined)
     next.pastedImageDir = normalizePastedImageDir(patch.pastedImageDir)
   if (patch.newFileExt !== undefined) next.newFileExt = normalizeNewFileExt(patch.newFileExt)
@@ -295,6 +311,8 @@ export function resetPreferences(): Settings {
     editorFontSize: base.editorFontSize,
     editorWordWrap: base.editorWordWrap,
     editorLineNumbers: base.editorLineNumbers,
+    editPreview: base.editPreview,
+    editSplitRatio: base.editSplitRatio,
     newFileExt: base.newFileExt,
     restoreSession: base.restoreSession,
     hideNoisyEntries: base.hideNoisyEntries,

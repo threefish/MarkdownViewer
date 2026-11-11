@@ -50,6 +50,8 @@ export interface Settings {
   editorFontSize: number
   editorWordWrap: boolean
   editorLineNumbers: boolean
+  editPreview: boolean
+  editSplitRatio: number
   pastedImageDir: string
   newFileExt: string
   restoreSession: boolean

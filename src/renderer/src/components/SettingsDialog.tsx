@@ -436,6 +436,20 @@ export function SettingsDialog({
           </div>
           <div className="hint">关闭自动换行后，长行在编辑器内横向滚动。</div>
           <div className="setting-row">
+            <span className="setting-row-label">编辑时显示预览</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.editPreview}
+              aria-label="编辑时显示预览"
+              className={`switch${settings.editPreview ? ' on' : ''}`}
+              onClick={() => void onPatch({ editPreview: !settings.editPreview })}
+            />
+          </div>
+          <div className="hint">
+            编辑 Markdown 时在右侧显示实时预览，可用 Ctrl+Shift+E 临时切换。大文件与只读模式不适用。
+          </div>
+          <div className="setting-row">
             <label className="setting-row-label" htmlFor="setting-new-file-ext">
               默认格式
             </label>
