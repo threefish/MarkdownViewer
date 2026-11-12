@@ -7,7 +7,8 @@ import {
 import type { AssocInfo, AppInfo, ContentFont, Settings, ThemePreference } from '../../../shared/types'
 import { THEME_DEFS, type ThemePreview } from '../../../shared/themes'
 import { errorMessage } from '../lib/text'
-import { CloseIcon } from './Icons'
+import { withExtOptions } from '../lib/newFileExts'
+import { CloseIcon, ChevronIcon } from './Icons'
 
 interface Props {
   open: boolean
@@ -55,28 +56,6 @@ const FONT_OPTIONS: Array<{ value: ContentFont; label: string }> = [
   { value: 'fangsong', label: '仿宋' }
 ]
 
-const NEW_FILE_EXTS: Array<{ value: string; label: string }> = [
-  { value: 'md', label: 'Markdown (.md)' },
-  { value: 'markdown', label: 'Markdown (.markdown)' },
-  { value: 'excalidraw', label: 'Excalidraw 画板 (.excalidraw)' },
-  { value: 'txt', label: '纯文本 (.txt)' },
-  { value: 'log', label: '日志 (.log)' },
-  { value: 'csv', label: 'CSV (.csv)' },
-  { value: 'json', label: 'JSON (.json)' },
-  { value: 'yml', label: 'YAML (.yml)' },
-  { value: 'toml', label: 'TOML (.toml)' },
-  { value: 'html', label: 'HTML (.html)' },
-  { value: 'css', label: 'CSS (.css)' },
-  { value: 'js', label: 'JavaScript (.js)' },
-  { value: 'ts', label: 'TypeScript (.ts)' },
-  { value: 'py', label: 'Python (.py)' },
-  { value: 'java', label: 'Java (.java)' },
-  { value: 'go', label: 'Go (.go)' },
-  { value: 'rs', label: 'Rust (.rs)' },
-  { value: 'sh', label: 'Shell (.sh)' },
-  { value: 'sql', label: 'SQL (.sql)' }
-]
-
 function splitPath(value: string): { name: string; dir: string } {
   const normalized = value.replace(/[\\/]+$/, '')
   const index = Math.max(normalized.lastIndexOf('\\'), normalized.lastIndexOf('/'))
@@ -108,9 +87,7 @@ export function SettingsDialog({
   const fontSize = fontPreview ?? settings.contentFontSize
   const leading = leadingPreview ?? settings.contentLineHeight
   const editorFont = editorFontPreview ?? settings.editorFontSize
-  const newFileExts = NEW_FILE_EXTS.some((option) => option.value === settings.newFileExt)
-    ? NEW_FILE_EXTS
-    : [...NEW_FILE_EXTS, { value: settings.newFileExt, label: `.${settings.newFileExt}` }]
+  const newFileExts = withExtOptions(settings.newFileExt)
 
   useEffect(() => {
     setDrawerWidth(settings.settingsWidth)
@@ -453,18 +430,21 @@ export function SettingsDialog({
             <label className="setting-row-label" htmlFor="setting-new-file-ext">
               默认格式
             </label>
-            <select
-              id="setting-new-file-ext"
-              className="setting-select"
-              value={settings.newFileExt}
-              onChange={(event) => void onPatch({ newFileExt: event.target.value })}
-            >
-              {newFileExts.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <div className="setting-select-wrap">
+              <select
+                id="setting-new-file-ext"
+                className="setting-select"
+                value={settings.newFileExt}
+                onChange={(event) => void onPatch({ newFileExt: event.target.value })}
+              >
+                {newFileExts.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronIcon open className="setting-select-chevron" />
+            </div>
           </div>
           <div className="hint">
             双击标签栏空白处，或点击标签栏右侧的 + 新建文件；文件名会按此格式预填，仍可手动修改。

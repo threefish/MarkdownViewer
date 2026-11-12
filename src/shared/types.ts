@@ -142,6 +142,12 @@ export interface RenameEntryResult {
   message?: string
 }
 
+export interface CopyEntryResult {
+  ok: boolean
+  path?: string
+  message?: string
+}
+
 export type SavePastedImageResult =
   | { ok: true; relative: string; absolute: string }
   | { ok: false; message: string }
@@ -178,7 +184,7 @@ export interface PdfExportResult {
 }
 
 export interface MdvApi {
-  openDialog(mode: 'file' | 'folder'): Promise<string | null>
+  openDialog(mode: 'file' | 'folder' | 'image' | 'drawing'): Promise<string | null>
   readDoc(path: string): Promise<DocPayload>
   readScene(path: string): Promise<DocPayload>
   pdfMeta(path: string): Promise<PdfMeta>
@@ -195,12 +201,15 @@ export interface MdvApi {
     mimeType: string
     data: Uint8Array
   }): Promise<SavePastedImageResult>
+  importAsset(payload: { docPath: string; sourcePath: string }): Promise<SavePastedImageResult>
   restoreDoc(payload: { path: string; content: string }): Promise<RestoreResult>
   listDir(dir: string): Promise<FsEntry[]>
   watchDir(dir: string): Promise<void>
   unwatchDir(dir: string): Promise<void>
   createEntry(payload: { dir: string; name: string; kind: 'file' | 'dir' }): Promise<CreateEntryResult>
   renameEntry(payload: { path: string; name: string }): Promise<RenameEntryResult>
+  copyEntry(payload: { source: string; targetDir: string }): Promise<CopyEntryResult>
+  copyText(text: string): Promise<boolean>
   trashPath(path: string): Promise<TrashResult>
   revealPath(path: string): Promise<void>
   searchTree(root: string, query: string): Promise<SearchResult>

@@ -186,10 +186,14 @@ interface Props {
   expanded: Set<string>
   hiddenPaths: string[]
   deletedEntries: FsEntry[]
+  copySource: string | null
   onToggleDir: (path: string) => void
   onOpen: (path: string) => void
   onCreateIn: (dir: string, kind: 'file' | 'dir') => void
   onReveal: (path: string) => void
+  onCopyPath: (path: string) => void
+  onCopyEntry: (entry: FsEntry) => void
+  onPasteInto: (dir: string) => void
   onTrash: (entry: FsEntry) => void
   onRename: (entry: FsEntry) => void
   onHideEntry: (entry: FsEntry) => void
@@ -203,10 +207,14 @@ export function FilesPanel({
   expanded,
   hiddenPaths,
   deletedEntries,
+  copySource,
   onToggleDir,
   onOpen,
   onCreateIn,
   onReveal,
+  onCopyPath,
+  onCopyEntry,
+  onPasteInto,
   onTrash,
   onRename,
   onHideEntry,
@@ -311,14 +319,26 @@ export function FilesPanel({
     onOpen(path)
   }
 
-  const handleRenameKey = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (event.key !== 'F2') return
+  const handleTreeKey = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     const tag = (event.target as HTMLElement).tagName
     if (tag === 'INPUT' || tag === 'TEXTAREA') return
     const entry = focusedEntry.current
     if (!entry) return
-    event.preventDefault()
-    onRename(entry)
+    if (event.key === 'F2') {
+      event.preventDefault()
+      onRename(entry)
+      return
+    }
+    if (!event.ctrlKey && !event.metaKey) return
+    const key = event.key.toLowerCase()
+    if (key === 'c') {
+      event.preventDefault()
+      onCopyEntry(entry)
+    } else if (key === 'v') {
+      event.preventDefault()
+      const dir = entry.isDir ? entry.path : parentOf(entry.path)
+      if (dir) onPasteInto(dir)
+    }
   }
 
   const hiddenUnder = (dir: string): number => {
@@ -333,13 +353,18 @@ export function FilesPanel({
 
   const buildItems = (state: MenuState): ContextMenuItem[] => {
     const { entry, isRoot } = state
+    const pasteItem: ContextMenuItem[] = copySource
+      ? [{ label: '粘贴', onClick: () => onPasteInto(entry.path) }]
+      : []
     if (isRoot) {
       const hiddenCount = hiddenUnder(entry.path)
       return [
         { label: '新建文件', onClick: () => onCreateIn(entry.path, 'file') },
         { label: '新建文件夹', onClick: () => onCreateIn(entry.path, 'dir') },
         { label: '重命名', onClick: () => onRename(entry) },
+        ...pasteItem,
         { label: '在资源管理器中显示', onClick: () => onReveal(entry.path) },
+        { label: '复制文件路径', onClick: () => onCopyPath(entry.path) },
         { separator: true },
         ...(hiddenCount
           ? [
@@ -359,7 +384,10 @@ export function FilesPanel({
         { label: '新建文件', onClick: () => onCreateIn(entry.path, 'file') },
         { label: '新建文件夹', onClick: () => onCreateIn(entry.path, 'dir') },
         { label: '重命名', onClick: () => onRename(entry) },
+        { label: '复制', onClick: () => onCopyEntry(entry) },
+        ...pasteItem,
         { label: '在资源管理器中显示', onClick: () => onReveal(entry.path) },
+        { label: '复制文件路径', onClick: () => onCopyPath(entry.path) },
         { separator: true },
         { label: '从文件树隐藏', onClick: () => onHideEntry(entry) },
         ...(hiddenCount
@@ -377,7 +405,10 @@ export function FilesPanel({
     return [
       { label: '打开', onClick: () => onOpen(entry.path) },
       { label: '重命名', onClick: () => onRename(entry) },
+      { label: '复制', onClick: () => onCopyEntry(entry) },
+      ...pasteItem,
       { label: '在资源管理器中显示', onClick: () => onReveal(entry.path) },
+      { label: '复制文件路径', onClick: () => onCopyPath(entry.path) },
       { separator: true },
       { label: '从文件树隐藏', onClick: () => onHideEntry(entry) },
       { separator: true },
@@ -386,7 +417,7 @@ export function FilesPanel({
   }
 
   return (
-    <div className="files-panel" onKeyDown={handleRenameKey}>
+    <div className="files-panel" onKeyDown={handleTreeKey}>
       <div className="side-search">
         <SearchIcon className="side-search-icon" />
         <input

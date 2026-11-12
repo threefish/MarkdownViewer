@@ -1,15 +1,17 @@
 import {
   app,
+  clipboard,
   dialog,
   ipcMain,
   shell,
   type BrowserWindow,
   type OpenDialogOptions
 } from 'electron'
-import { promises as fs } from 'node:fs'
+import { constants as fsConstants, promises as fs } from 'node:fs'
 import path from 'node:path'
 import type {
   AssocInfo,
+  CopyEntryResult,
   CreateEntryResult,
   DocPayload,
   FsEntry,
@@ -89,6 +91,30 @@ function pasteImageStamp(date: Date): string {
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
 }
 
+// 粘贴图片 / 插入资源统一落盘目录：文档目录 + 设置中的相对子目录（必须仍在文档目录内）。
+function assetDirFor(docPath: string): { base: string; dir: string } | { error: string } {
+  const base = path.dirname(docPath)
+  const sub = getSettings().pastedImageDir
+  const dir = sub ? path.join(base, sub) : base
+  const relativeDir = path.relative(base, dir)
+  if (relativeDir === '..' || relativeDir.startsWith(`..${path.sep}`) || path.isAbsolute(relativeDir)) {
+    return { error: '保存目录无效' }
+  }
+  return { base, dir }
+}
+
+// 生成不冲突的目标名：原名 →「原名 - 副本.ext」→「原名 - 副本 (n).ext」，全程不覆盖已有文件。
+async function uniqueChildName(dir: string, fileName: string): Promise<string> {
+  const ext = path.extname(fileName)
+  const stem = ext ? fileName.slice(0, -ext.length) : fileName
+  for (let index = 0; index <= 100; index++) {
+    const candidate = index === 0 ? fileName : index === 1 ? `${stem} - 副本${ext}` : `${stem} - 副本 (${index})${ext}`
+    const target = path.join(dir, candidate)
+    if (!(await exists(target))) return target
+  }
+  throw new Error('同名文件过多，无法写入')
+}
+
 function send(getWin: WindowGetter, channel: string, payload: unknown): void {
   const win = getWin()
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
@@ -117,20 +143,36 @@ async function readDocument(rawPath: string): Promise<DocPayload> {
 }
 
 export function registerIpc(getWin: WindowGetter): void {
-  ipcMain.handle('dialog:open', async (_event, mode: 'file' | 'folder') => {
+  ipcMain.handle('dialog:open', async (_event, mode: 'file' | 'folder' | 'image' | 'drawing') => {
     const win = getWin()
     const options: OpenDialogOptions =
       mode === 'folder'
         ? { properties: ['openDirectory'] }
-        : {
-            properties: ['openFile'],
-            filters: [
-              { name: '文本 / 代码', extensions: textFileExtensions() },
-              { name: 'PDF 文档', extensions: ['pdf'] },
-              { name: '图片', extensions: imageFileExtensions() },
-              { name: '所有文件', extensions: ['*'] }
-            ]
-          }
+        : mode === 'image'
+          ? {
+              properties: ['openFile'],
+              filters: [
+                { name: '图片', extensions: imageFileExtensions() },
+                { name: '所有文件', extensions: ['*'] }
+              ]
+            }
+          : mode === 'drawing'
+            ? {
+                properties: ['openFile'],
+                filters: [
+                  { name: 'Excalidraw 画板', extensions: ['excalidraw'] },
+                  { name: '所有文件', extensions: ['*'] }
+                ]
+              }
+            : {
+                properties: ['openFile'],
+                filters: [
+                  { name: '文本 / 代码', extensions: textFileExtensions() },
+                  { name: 'PDF 文档', extensions: ['pdf'] },
+                  { name: '图片', extensions: imageFileExtensions() },
+                  { name: '所有文件', extensions: ['*'] }
+                ]
+              }
     const result = win
       ? await dialog.showOpenDialog(win, options)
       : await dialog.showOpenDialog(options)
@@ -287,17 +329,9 @@ export function registerIpc(getWin: WindowGetter): void {
       if (!data.byteLength) return { ok: false, message: '图片数据无效' }
       if (data.byteLength > PASTE_IMAGE_MAX) return { ok: false, message: '图片超过 20MB，未保存' }
 
-      const base = path.dirname(docPath)
-      const sub = getSettings().pastedImageDir
-      const dir = sub ? path.join(base, sub) : base
-      const relativeDir = path.relative(base, dir)
-      if (
-        relativeDir === '..' ||
-        relativeDir.startsWith(`..${path.sep}`) ||
-        path.isAbsolute(relativeDir)
-      ) {
-        return { ok: false, message: '保存目录无效' }
-      }
+      const resolved = assetDirFor(docPath)
+      if ('error' in resolved) return { ok: false, message: resolved.error }
+      const { base, dir } = resolved
       await fs.mkdir(dir, { recursive: true })
 
       const stem = `image-${pasteImageStamp(new Date())}`
@@ -329,6 +363,48 @@ export function registerIpc(getWin: WindowGetter): void {
         absolute: target
       }
     } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  // 从磁盘选入图片 / 画板：已在文档目录内直接引用相对路径，否则复制进资源目录后返回新相对路径。
+  ipcMain.handle('doc:import-asset', async (_event, raw: {
+    docPath?: unknown
+    sourcePath?: unknown
+  }): Promise<SavePastedImageResult> => {
+    try {
+      const docPath = requireAbsPath(raw?.docPath, '文档路径')
+      if (!isTextFile(docPath)) return { ok: false, message: '不是支持的文本文件' }
+      const sourcePath = requireAbsPath(raw?.sourcePath, '源文件路径')
+      const realSrc = await fs.realpath(sourcePath)
+      const stat = await fs.stat(realSrc)
+      if (!stat.isFile()) return { ok: false, message: '源路径不是文件' }
+      if (!isImageFile(realSrc) && !isExcalidrawFile(realSrc)) {
+        return { ok: false, message: '仅支持图片或 Excalidraw 画板' }
+      }
+      if (stat.size > PASTE_IMAGE_MAX) return { ok: false, message: '文件超过 20MB，未插入' }
+
+      const resolved = assetDirFor(docPath)
+      if ('error' in resolved) return { ok: false, message: resolved.error }
+      const { base, dir } = resolved
+
+      const insideBase = path.relative(base, realSrc)
+      if (insideBase !== '' && !insideBase.startsWith(`..${path.sep}`) && !path.isAbsolute(insideBase)) {
+        return { ok: true, relative: insideBase.split(path.sep).join('/'), absolute: realSrc }
+      }
+
+      await fs.mkdir(dir, { recursive: true })
+      const target = await uniqueChildName(dir, path.basename(realSrc))
+      await fs.copyFile(realSrc, target, fsConstants.COPYFILE_EXCL)
+      return {
+        ok: true,
+        relative: path.relative(base, target).split(path.sep).join('/'),
+        absolute: target
+      }
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'ENOENT') return { ok: false, message: '源文件不存在或已被移动' }
+      if (code === 'ENOSPC') return { ok: false, message: '磁盘空间不足' }
       return { ok: false, message: err instanceof Error ? err.message : String(err) }
     }
   })
@@ -521,6 +597,48 @@ export function registerIpc(getWin: WindowGetter): void {
       if (code === 'EACCES' || code === 'EPERM') return { ok: false, message: '没有删除权限' }
       return { ok: false, message: err instanceof Error ? err.message : String(err) }
     }
+  })
+
+  // 文件树「复制 → 粘贴」：在目标目录生成副本，同名按「- 副本」自增，绝不覆盖已有文件。
+  ipcMain.handle('fs:copy', async (_event, raw: {
+    source?: unknown
+    targetDir?: unknown
+  }): Promise<CopyEntryResult> => {
+    try {
+      const source = requireAbsPath(raw?.source, '源路径')
+      const targetDir = requireAbsPath(raw?.targetDir, '目标文件夹')
+      const dirStat = await fs.stat(targetDir)
+      if (!dirStat.isDirectory()) return { ok: false, message: '目标不是文件夹' }
+      const real = await fs.realpath(source)
+      const stat = await fs.stat(real)
+      if (!stat.isFile() && !stat.isDirectory()) return { ok: false, message: '不支持复制此类型的项目' }
+      if (stat.isDirectory()) {
+        const rel = path.relative(real, targetDir)
+        if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) {
+          return { ok: false, message: '不能把文件夹复制到它自己内部' }
+        }
+      }
+      const target = await uniqueChildName(targetDir, path.basename(real))
+      await fs.cp(real, target, {
+        recursive: stat.isDirectory(),
+        force: false,
+        errorOnExist: true,
+        preserveTimestamps: true
+      })
+      return { ok: true, path: target }
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'ENOENT') return { ok: false, message: '源文件或目标文件夹不存在' }
+      if (code === 'EACCES' || code === 'EPERM') return { ok: false, message: '没有复制权限' }
+      if (code === 'ENOSPC') return { ok: false, message: '磁盘空间不足' }
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  ipcMain.handle('clipboard:write-text', (_event, text: unknown): boolean => {
+    if (typeof text !== 'string' || !text) return false
+    clipboard.writeText(text)
+    return true
   })
 
   ipcMain.handle('fs:reveal', async (_event, rawPath: string) => {

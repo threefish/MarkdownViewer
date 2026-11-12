@@ -1,6 +1,6 @@
 {
   "name": "md-viewer",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "description": "Local Markdown reader: images, tables, math, mermaid diagrams",
   "main": "./out/main/index.js",
   "author": "local",
@@ -10,7 +10,7 @@
     "dev": "electron-vite dev",
     "build": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && electron-vite build && node scripts/copy-excalidraw-assets.mjs && node scripts/copy-pdfjs-assets.mjs",
     "pack": "npm run build && electron-builder --win --x64",
-    "zip": "powershell -NoProfile -Command \"Compress-Archive -Path 'release/win-unpacked/*' -DestinationPath 'release/md-viewer-0.1.0-win-x64.zip' -Force\""
+    "zip": "powershell -NoProfile -Command \"Compress-Archive -Path 'release-dist/win-unpacked/*' -DestinationPath 'release-dist/md-viewer-1.1.0-win-x64.zip' -Force\""
   },
   "devDependencies": {
     "@codemirror/commands": "^6.11.1",

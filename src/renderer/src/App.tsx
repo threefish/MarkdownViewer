@@ -18,10 +18,11 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import type { EditorHandle } from './components/Editor'
 import { EmptyState } from './components/EmptyState'
 import { HiddenRestoreDialog } from './components/HiddenRestoreDialog'
+import { InsertAssetDialog } from './components/InsertAssetDialog'
 import { CloseIcon, EyeIcon, PencilIcon, SearchIcon, SplitIcon } from './components/Icons'
 import { clearImageViewState, ImageView } from './components/ImageView'
 import type { MenuAction, MenuState } from './components/MenuBar'
-import { MdToolbar } from './components/MdToolbar'
+import { MdToolbar, type InsertKind } from './components/MdToolbar'
 import { NewEntryDialog } from './components/NewEntryDialog'
 import { SearchBar } from './components/SearchBar'
 import { SettingsDialog } from './components/SettingsDialog'
@@ -228,6 +229,9 @@ export default function App(): JSX.Element {
   const pdfPagesRef = useRef(new Map<string, number>())
   const [restoreTick, setRestoreTick] = useState(0)
   const [trashTarget, setTrashTarget] = useState<FsEntry | null>(null)
+  const [copySource, setCopySource] = useState<FsEntry | null>(null)
+  const [insertTarget, setInsertTarget] = useState<{ kind: InsertKind; docPath: string } | null>(null)
+  const [insertBusy, setInsertBusy] = useState(false)
   const [createBaseDir, setCreateBaseDir] = useState<string | null>(null)
   const [hugeEdit, setHugeEdit] = useState<{ path: string; name: string } | null>(null)
   const [navState, setNavState] = useState({ canBack: false, canForward: false })
@@ -240,6 +244,8 @@ export default function App(): JSX.Element {
   const previewHandle = useRef<SplitPreviewHandle | null>(null)
   const leaderRef = useRef<'editor' | 'preview'>('editor')
   const guardRef = useRef({ editor: 0, preview: 0 })
+  const caretLeadRef = useRef(0)
+  const caretFractionRef = useRef(0)
   const rootsRef = useRef<string[]>([])
   const settingsRef = useRef<Settings>(INITIAL_SETTINGS)
   const restoredRef = useRef(false)
@@ -1254,6 +1260,38 @@ export default function App(): JSX.Element {
     void window.mdv.revealPath(path).catch((err) => setNotice(errorMessage(err)))
   }, [])
 
+  const handleCopyPath = useCallback((path: string) => {
+    void window.mdv
+      .copyText(path)
+      .then((ok) => setNotice(ok ? '已复制文件路径' : '复制失败'))
+      .catch((err) => setNotice(`复制失败：${errorMessage(err)}`))
+  }, [])
+
+  const handleCopyEntry = useCallback((entry: FsEntry) => {
+    setCopySource(entry)
+    setNotice(`已复制「${entry.name}」，可在目标文件夹中粘贴`)
+  }, [])
+
+  const handlePasteInto = useCallback(
+    async (dir: string) => {
+      const source = copySource
+      if (!source) {
+        setNotice('请先复制一个文件或文件夹')
+        return
+      }
+      const result = await window.mdv
+        .copyEntry({ source: source.path, targetDir: dir })
+        .catch((err) => ({ ok: false as const, message: errorMessage(err) }))
+      if (!result.ok) {
+        setNotice(`粘贴失败：${result.message ?? '未知错误'}`)
+        return
+      }
+      setTreeVersion((value) => value + 1)
+      setNotice(`已粘贴「${source.name}」到 ${basenameOf(dir) || dir}`)
+    },
+    [copySource]
+  )
+
   const requestTrash = useCallback((entry: FsEntry) => {
     setTrashTarget(entry)
   }, [])
@@ -1400,6 +1438,47 @@ export default function App(): JSX.Element {
   const handleFormat = useCallback((action: FormatAction) => {
     editorHandle.current?.applyFormat(action)
   }, [])
+
+  const insertAssetPath = useCallback(
+    async (docPath: string, kind: InsertKind, sourcePath: string) => {
+      const label = kind === 'drawing' ? '画板' : '图片'
+      setInsertBusy(true)
+      try {
+        const result = await window.mdv.importAsset({ docPath, sourcePath })
+        if (!result.ok) {
+          setNotice(`插入${label}失败：${result.message}`)
+          return
+        }
+        const alt = basenameOf(result.relative).replace(/\.[^.]+$/, '')
+        editorHandle.current?.insertText(`![${alt}](${result.relative})`)
+        setNotice(`已插入${label} ${result.relative}`)
+        setInsertTarget(null)
+      } catch (err) {
+        setNotice(`插入${label}失败：${errorMessage(err)}`)
+      } finally {
+        setInsertBusy(false)
+      }
+    },
+    []
+  )
+
+  const handleInsertAsset = useCallback((kind: InsertKind) => {
+    const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
+    const label = kind === 'drawing' ? '画板' : '图片'
+    if (!tab || !isMarkdownFile(tab.path) || !tab.editing) {
+      setNotice(`请先进入 Markdown 编辑模式再插入${label}`)
+      return
+    }
+    setInsertTarget({ kind, docPath: tab.path })
+  }, [])
+
+  const handleImportAssetOther = useCallback(async () => {
+    const target = insertTarget
+    if (!target) return
+    const picked = await window.mdv.openDialog(target.kind === 'drawing' ? 'drawing' : 'image')
+    if (!picked) return
+    await insertAssetPath(target.docPath, target.kind, picked)
+  }, [insertTarget, insertAssetPath])
 
   const selectAllContent = useCallback(() => {
     const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
@@ -1898,8 +1977,13 @@ export default function App(): JSX.Element {
     : ''
 
   // 分屏双向滚动采用 leader 选举：最后交互的一侧驱动另一侧，程序化滚动由 guard 时间戳抑制回环。
+  // 光标行与编辑器顶行是两个锚点：点击/按键把预览钉到光标行，随后滚动编辑器要沿用两者的偏移，
+  // 否则首个滚轮就会把预览从光标处拉回编辑器顶行（看起来像"滚回顶部"）。
+  // 同时记录光标在编辑视口中的相对高度，预览把对应块放到同一比例处，避免一律钉到顶部。
   useEffect(() => {
     leaderRef.current = 'editor'
+    caretLeadRef.current = 0
+    caretFractionRef.current = 0
     if (!splitActive) {
       previewHandle.current = null
       return
@@ -1910,7 +1994,11 @@ export default function App(): JSX.Element {
       const target = event.target as HTMLElement | null
       if (!target?.closest) return
       if (target.closest('.editor-pane')) leaderRef.current = 'editor'
-      else if (target.closest('.reader-wrap')) leaderRef.current = 'preview'
+      else if (target.closest('.reader-wrap')) {
+        leaderRef.current = 'preview'
+        caretLeadRef.current = 0
+        caretFractionRef.current = 0
+      }
     }
     workspace.addEventListener('pointerdown', pick, true)
     workspace.addEventListener('wheel', pick, { capture: true, passive: true })
@@ -2047,6 +2135,7 @@ export default function App(): JSX.Element {
           expanded={expandedDirs}
           hiddenPaths={settings.hiddenTreePaths}
           deletedEntries={deletedEntries}
+          copySource={copySource?.path ?? null}
           pdfActive={activeIsPdf}
           pdfOutline={pdfOutline}
           pdfPage={pdfPage}
@@ -2056,6 +2145,9 @@ export default function App(): JSX.Element {
           onOpen={(path) => void openDoc(path)}
           onCreateIn={handleTreeCreate}
           onReveal={handleReveal}
+          onCopyPath={handleCopyPath}
+          onCopyEntry={handleCopyEntry}
+          onPasteInto={(dir) => void handlePasteInto(dir)}
           onTrash={requestTrash}
           onRename={startRename}
           onHideEntry={hideTreeEntry}
@@ -2158,7 +2250,9 @@ export default function App(): JSX.Element {
             </div>
           ) : null}
 
-          {showMdToolbar ? <MdToolbar key="md-toolbar" onFormat={handleFormat} /> : null}
+          {showMdToolbar ? (
+            <MdToolbar key="md-toolbar" onFormat={handleFormat} onInsert={handleInsertAsset} />
+          ) : null}
 
           <div className="workspace" ref={workspaceRef}>
             <div
@@ -2308,7 +2402,21 @@ export default function App(): JSX.Element {
                       leaderRef.current === 'editor' &&
                       performance.now() >= guardRef.current.editor
                     ) {
-                      previewHandle.current?.syncToLine(line)
+                      previewHandle.current?.syncToLine(
+                        line + caretLeadRef.current,
+                        caretFractionRef.current
+                      )
+                    }
+                  }}
+                  onCursorLine={(caretLine, topLine, fraction) => {
+                    if (
+                      splitActive &&
+                      leaderRef.current === 'editor' &&
+                      performance.now() >= guardRef.current.editor
+                    ) {
+                      caretLeadRef.current = Math.max(0, caretLine - topLine)
+                      caretFractionRef.current = fraction
+                      previewHandle.current?.syncToLine(caretLine, fraction)
                     }
                   }}
                   onReady={(handle) => {
@@ -2480,6 +2588,19 @@ export default function App(): JSX.Element {
         error={createError}
         onSubmit={(name) => void (renameTarget ? submitRename(name) : submitCreate(name))}
         onCancel={cancelCreate}
+      />
+
+      <InsertAssetDialog
+        open={insertTarget !== null}
+        kind={insertTarget?.kind ?? 'image'}
+        docPath={insertTarget?.docPath ?? ''}
+        busy={insertBusy}
+        onInsert={(path) => {
+          if (!insertTarget) return
+          void insertAssetPath(insertTarget.docPath, insertTarget.kind, path)
+        }}
+        onImportOther={() => void handleImportAssetOther()}
+        onCancel={() => setInsertTarget(null)}
       />
 
       <AboutDialog

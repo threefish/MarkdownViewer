@@ -2863,23 +2863,45 @@ body.settings-resizing .settings-resizer::after {
   margin-top: 8px;
 }
 
-.setting-select {
+.setting-select-wrap {
+  position: relative;
   margin-left: auto;
+  width: 132px;
   max-width: 55%;
-  min-width: 132px;
+}
+
+.setting-select {
+  width: 100%;
   height: 27px;
-  padding: 0 6px;
+  padding: 0 24px 0 8px;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--bg-elev);
   color: var(--text);
   font-size: 12.5px;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .setting-select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+.setting-select-wrap:focus-within .setting-select-chevron {
+  color: var(--accent);
+}
+
+.setting-select-chevron {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 13px;
+  height: 13px;
+  margin-top: -6.5px;
+  color: var(--text-2);
+  pointer-events: none;
 }
 
 .setting-input {
@@ -3219,6 +3241,143 @@ body.settings-resizing .settings-resizer::after {
   background: var(--bg);
   color: var(--text);
   font-size: 13px;
+}
+
+.modal-new-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-new-row .text-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.modal-new-select-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  width: 120px;
+}
+
+.modal-new-select {
+  width: 100%;
+  height: 32px;
+  padding: 0 26px 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.modal-new-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.modal-new-select-wrap:focus-within .modal-new-chevron {
+  color: var(--accent);
+}
+
+.modal-new-chevron {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  color: var(--text-2);
+  pointer-events: none;
+}
+
+.modal.asset-picker {
+  width: min(560px, 100%);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px 14px;
+  overflow: hidden;
+}
+
+.asset-doc {
+  margin: 2px 0 10px;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.asset-tree {
+  flex: 1;
+  min-height: 240px;
+  max-height: 46vh;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.asset-tree:focus {
+  outline: none;
+}
+
+.asset-tree:focus-visible {
+  border-color: var(--border-strong);
+}
+
+.asset-tree-root {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px 6px;
+  margin-bottom: 3px;
+  border-bottom: 1px dashed var(--border);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.asset-tree-root .tree-label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.asset-actions {
+  margin-top: 12px;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.asset-import {
+  flex: 0 0 auto;
+  padding: 0 8px;
+}
+
+.asset-selected {
+  flex: 1;
+  min-width: 0;
+  padding: 0 6px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.asset-actions-right {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
 }
 
 .text-input:focus {

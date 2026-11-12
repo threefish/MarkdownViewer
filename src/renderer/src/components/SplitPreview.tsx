@@ -6,7 +6,7 @@ const DEBOUNCE_MS = 250
 const SYNC_SUPPRESS_MS = 150
 
 export interface SplitPreviewHandle {
-  syncToLine(line: number): void
+  syncToLine(line: number, fraction?: number): void
 }
 
 interface Anchor {
@@ -94,6 +94,7 @@ export function SplitPreview({
   const anchorsRef = useRef<Anchor[]>([])
   const dirtyRef = useRef(true)
   const lastLineRef = useRef(1)
+  const lastFractionRef = useRef(0)
   const repinFrameRef = useRef(0)
   const onScrollRef = useRef(onScroll)
   const onReadyRef = useRef(onReady)
@@ -138,22 +139,25 @@ export function SplitPreview({
   }, [scrollerRef])
 
   const syncToLine = useCallback(
-    (line: number) => {
+    (line: number, fraction = 0) => {
       const scroller = scrollerRef.current
       if (!scroller) return
       lastLineRef.current = line
+      lastFractionRef.current = fraction
       if (dirtyRef.current) collectAnchors()
       const top = topForLine(anchorsRef.current, line)
       if (top === null) return
       guardRef.current.preview = performance.now() + SYNC_SUPPRESS_MS
       const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
-      scroller.scrollTop = Math.min(max, Math.max(0, top))
+      const target = top - Math.min(1, Math.max(0, fraction)) * scroller.clientHeight
+      scroller.scrollTop = Math.min(max, Math.max(0, target))
     },
     [collectAnchors, guardRef, scrollerRef]
   )
 
   useEffect(() => {
     lastLineRef.current = getEditorTopLineRef.current() ?? 1
+    lastFractionRef.current = 0
     onReadyRef.current({ syncToLine })
   }, [syncToLine])
 
@@ -162,7 +166,7 @@ export function SplitPreview({
     dirtyRef.current = true
     const frame = window.requestAnimationFrame(() => {
       collectAnchors()
-      if (leaderRef.current === 'editor') syncToLine(lastLineRef.current)
+      if (leaderRef.current === 'editor') syncToLine(lastLineRef.current, lastFractionRef.current)
     })
     return () => window.cancelAnimationFrame(frame)
   }, [content, collectAnchors, leaderRef, syncToLine])
@@ -176,7 +180,7 @@ export function SplitPreview({
       repinFrameRef.current = window.requestAnimationFrame(() => {
         repinFrameRef.current = 0
         collectAnchors()
-        if (leaderRef.current === 'editor') syncToLine(lastLineRef.current)
+        if (leaderRef.current === 'editor') syncToLine(lastLineRef.current, lastFractionRef.current)
       })
     })
     observer.observe(doc)

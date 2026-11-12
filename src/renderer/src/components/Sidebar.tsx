@@ -19,6 +19,7 @@ interface Props {
   expanded: Set<string>
   hiddenPaths: string[]
   deletedEntries: FsEntry[]
+  copySource: string | null
   pdfActive: boolean
   pdfOutline: PdfOutlineEntry[] | null
   pdfPage: number
@@ -28,6 +29,9 @@ interface Props {
   onOpen: (path: string) => void
   onCreateIn: (dir: string, kind: 'file' | 'dir') => void
   onReveal: (path: string) => void
+  onCopyPath: (path: string) => void
+  onCopyEntry: (entry: FsEntry) => void
+  onPasteInto: (dir: string) => void
   onTrash: (entry: FsEntry) => void
   onRename: (entry: FsEntry) => void
   onHideEntry: (entry: FsEntry) => void
@@ -51,6 +55,7 @@ export function Sidebar({
   expanded,
   hiddenPaths,
   deletedEntries,
+  copySource,
   pdfActive,
   pdfOutline,
   pdfPage,
@@ -60,6 +65,9 @@ export function Sidebar({
   onOpen,
   onCreateIn,
   onReveal,
+  onCopyPath,
+  onCopyEntry,
+  onPasteInto,
   onTrash,
   onRename,
   onHideEntry,
@@ -119,10 +127,14 @@ export function Sidebar({
               expanded={expanded}
               hiddenPaths={hiddenPaths}
               deletedEntries={deletedEntries}
+              copySource={copySource}
               onToggleDir={onToggleDir}
               onOpen={onOpen}
               onCreateIn={onCreateIn}
               onReveal={onReveal}
+              onCopyPath={onCopyPath}
+              onCopyEntry={onCopyEntry}
+              onPasteInto={onPasteInto}
               onTrash={onTrash}
               onRename={onRename}
               onHideEntry={onHideEntry}

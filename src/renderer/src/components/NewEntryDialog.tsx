@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
+import { withExtOptions } from '../lib/newFileExts'
+import { ChevronIcon } from './Icons'
 
 interface Props {
   open: boolean
@@ -11,6 +13,12 @@ interface Props {
   error: string | null
   onSubmit: (name: string) => void
   onCancel: () => void
+}
+
+/** 把名称里最后一个扩展名换成 next；没有扩展名时补上。 */
+function replaceExt(name: string, next: string): string {
+  const dot = name.lastIndexOf('.')
+  return dot > 0 ? `${name.slice(0, dot + 1)}${next}` : `${name}.${next}`
 }
 
 export function NewEntryDialog({
@@ -26,8 +34,10 @@ export function NewEntryDialog({
   onCancel
 }: Props): JSX.Element | null {
   const [name, setName] = useState('')
+  const [ext, setExt] = useState(defaultExt)
   const inputRef = useRef<HTMLInputElement>(null)
   const renaming = mode === 'rename'
+  const showExt = kind === 'file' && !renaming
 
   useEffect(() => {
     if (!open) return
@@ -37,6 +47,7 @@ export function NewEntryDialog({
         ? `未命名.${defaultExt}`
         : '新建文件夹'
     setName(initial)
+    setExt(defaultExt)
     const timer = window.setTimeout(() => {
       const input = inputRef.current
       if (!input) return
@@ -81,14 +92,41 @@ export function NewEntryDialog({
         <p className="modal-new-dir" title={dir ?? ''}>
           {dir ? `位置：${dir}` : '请先打开文件或文件夹'}
         </p>
-        <input
-          ref={inputRef}
-          className="text-input"
-          value={name}
-          spellCheck={false}
-          disabled={busy}
-          onChange={(event) => setName(event.target.value)}
-        />
+        <div className="modal-new-row">
+          <input
+            ref={inputRef}
+            className="text-input"
+            value={name}
+            spellCheck={false}
+            disabled={busy}
+            onChange={(event) => setName(event.target.value)}
+          />
+          {showExt ? (
+            <div className="modal-new-select-wrap">
+              <select
+                id="new-entry-ext"
+                className="modal-new-select"
+                aria-label="文件格式"
+                title={ext ? `格式：.${ext}` : undefined}
+                value={ext}
+                disabled={busy}
+                onChange={(event) => {
+                  const next = event.target.value
+                  setExt(next)
+                  setName((previous) => replaceExt(previous, next))
+                  inputRef.current?.focus()
+                }}
+              >
+                {withExtOptions(ext).map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronIcon open className="modal-new-chevron" />
+            </div>
+          ) : null}
+        </div>
         {error ? <p className="modal-new-error">{error}</p> : null}
         <div className="confirm-actions">
           <button type="button" className="btn" disabled={busy} onClick={onCancel}>

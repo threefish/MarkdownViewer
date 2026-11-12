@@ -316,6 +316,16 @@ export function ImageIcon(props: IconProps): React.JSX.Element {
   )
 }
 
+export function DrawingIcon(props: IconProps): React.JSX.Element {
+  return (
+    <Svg {...props}>
+      <path d="M8.5 3.8L3.4 11.4h10.2z" />
+      <circle cx="17.8" cy="7.6" r="3.1" />
+      <rect x="12.6" y="14.4" width="7.8" height="5.8" rx="1.2" />
+    </Svg>
+  )
+}
+
 export function TableIcon(props: IconProps): React.JSX.Element {
   return (
     <Svg {...props}>

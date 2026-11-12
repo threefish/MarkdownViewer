@@ -165,6 +165,7 @@ export interface EditorHandle {
   redo(): void
   selectAll(): void
   applyFormat(action: FormatAction): void
+  insertText(text: string): void
   getTopLine(): number
   scrollToLine(line: number): void
   toggleTaskLine(line: number, checked: boolean): void
@@ -183,6 +184,22 @@ interface Props {
   onPasteImage?: (file: File) => Promise<string | null>
   initialScrollLine?: number
   onScrollLine?: (line: number) => void
+  onCursorLine?: (caretLine: number, topLine: number, fraction: number) => void
+}
+
+// 编辑器视口顶部对应的源码行；与光标行一起上报，App 用它换算两者的固定偏移。
+function topVisibleLine(view: EditorView): number {
+  const pos = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from
+  return view.state.doc.lineAt(pos).number
+}
+
+// 光标所在块在编辑视口中的相对高度（0~1）；预览按同样比例摆放对应块，
+// 这样点击视口中部时光标对应内容也落在预览中部，而不是被钉到顶部。
+function caretFraction(view: EditorView, pos: number): number {
+  const scroller = view.scrollDOM
+  const block = view.lineBlockAt(pos)
+  const height = scroller.clientHeight || 1
+  return Math.min(1, Math.max(0, (block.top - scroller.scrollTop) / height))
 }
 
 function editorTheme(theme: ThemeMode): Extension {
@@ -508,7 +525,8 @@ export function Editor({
   onReady,
   onPasteImage,
   initialScrollLine,
-  onScrollLine
+  onScrollLine,
+  onCursorLine
 }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -517,6 +535,7 @@ export function Editor({
   const readyRef = useRef(onReady)
   const pasteImageRef = useRef(onPasteImage)
   const scrollLineRef = useRef(onScrollLine)
+  const cursorLineRef = useRef(onCursorLine)
   const pasteModeRef = useRef({ language, readOnly })
   const themeCompartment = useRef(new Compartment())
   const wrapCompartment = useRef(new Compartment())
@@ -565,6 +584,10 @@ export function Editor({
   }, [onScrollLine])
 
   useEffect(() => {
+    cursorLineRef.current = onCursorLine
+  }, [onCursorLine])
+
+  useEffect(() => {
     pasteModeRef.current = { language, readOnly }
   }, [language, readOnly])
 
@@ -601,6 +624,18 @@ export function Editor({
           // 粘贴截图或剪贴板图片时拦截默认行为，交给 App 保存并在原选区插入链接；
           // 只要剪贴板含图片就按图片处理（部分工具的截图会同时附带文本）。
           EditorView.domEventHandlers({
+            mousedown: (event, view) => {
+              if (event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey) return false
+              const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
+              if (pos !== null) {
+                cursorLineRef.current?.(
+                  view.state.doc.lineAt(pos).number,
+                  topVisibleLine(view),
+                  caretFraction(view, pos)
+                )
+              }
+              return false
+            },
             paste: (event, view) => {
               const mode = pasteModeRef.current
               if (mode.language !== 'markdown' || mode.readOnly || view.state.readOnly) return false
@@ -632,6 +667,19 @@ export function Editor({
           EditorView.theme({ '&': { fontSize: 'var(--editor-size, 13.5px)' } }),
           EditorView.updateListener.of((update) => {
             if (update.viewportChanged || update.heightChanged) scheduleThumb()
+            if (update.selectionSet) {
+              const range = update.state.selection.main
+              const byUser = update.transactions.some(
+                (tr) => tr.selection !== undefined && tr.isUserEvent('select')
+              )
+              if (byUser && range.empty) {
+                cursorLineRef.current?.(
+                  update.state.doc.lineAt(range.head).number,
+                  topVisibleLine(view),
+                  caretFraction(view, range.head)
+                )
+              }
+            }
             if (!update.docChanged) return
             scheduleThumb()
             const next = update.state.doc.toString()
@@ -693,6 +741,16 @@ export function Editor({
         view.dispatch({
           changes: [{ from: result.from, to: result.to, insert: result.insert }, ...(result.extra ?? [])],
           selection: { anchor: result.selFrom, head: result.selTo },
+          userEvent: 'input',
+          scrollIntoView: true
+        })
+        view.focus()
+      },
+      insertText: (text) => {
+        const { from, to } = view.state.selection.main
+        view.dispatch({
+          changes: { from, to, insert: text },
+          selection: { anchor: from + text.length },
           userEvent: 'input',
           scrollIntoView: true
         })
