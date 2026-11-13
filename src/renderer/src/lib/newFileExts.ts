@@ -7,6 +7,7 @@ export const NEW_FILE_EXTS: NewFileExtOption[] = [
   { value: 'md', label: '.md' },
   { value: 'markdown', label: '.markdown' },
   { value: 'excalidraw', label: '.excalidraw' },
+  { value: 'smm', label: '.smm' },
   { value: 'txt', label: '.txt' },
   { value: 'log', label: '.log' },
   { value: 'csv', label: '.csv' },

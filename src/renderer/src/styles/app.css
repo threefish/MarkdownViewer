@@ -1409,6 +1409,159 @@ body.split-resizing .workspace > :not(.split-resizer) {
   color: var(--danger);
 }
 
+/* ---------- mind map ---------- */
+
+.mindmap-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.mindmap-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.mindmap-canvas > svg {
+  display: block;
+}
+
+/* 本库假定宿主页面做过全局 margin 重置；缺失时 p 的默认外边距会把文字挤出 foreignObject */
+.mindmap-canvas .smm-richtext-node-wrap :is(p, h1, h2, h3, h4, h5, h6, ol, ul, blockquote, pre) {
+  margin: 0;
+  padding: 0;
+}
+
+.mindmap-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  opacity: 0.9;
+  transition: opacity 0.15s ease;
+}
+
+.mindmap-toolbar:hover {
+  opacity: 1;
+}
+
+.mindmap-select-wrap {
+  position: relative;
+  width: 106px;
+}
+
+.mindmap-select {
+  width: 100%;
+  height: 28px;
+  padding: 0 22px 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.mindmap-select:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.mindmap-select:focus {
+  outline: none;
+}
+
+.mindmap-select:disabled {
+  color: var(--text-3);
+  cursor: default;
+}
+
+.mindmap-select-wrap:focus-within .mindmap-chevron {
+  color: var(--accent);
+}
+
+.mindmap-chevron {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 13px;
+  height: 13px;
+  margin-top: -6.5px;
+  color: var(--text-2);
+  pointer-events: none;
+}
+
+.mindmap-btn {
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 6px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.mindmap-btn:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.mindmap-btn:active:not(:disabled) {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.mindmap-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.mindmap-btn:disabled {
+  color: var(--text-3);
+  cursor: default;
+}
+
+.mindmap-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--border);
+}
+
+.mindmap-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.mindmap-message strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
 .editor-status {
   flex: 0 0 auto;
   display: flex;
@@ -3737,4 +3890,66 @@ body.settings-resizing .settings-resizer::after {
   .lightbox-next {
     right: 12px;
   }
+}
+
+/* ---------- 禅模式 ---------- */
+
+.app.zen .mindmap-toolbar,
+.app.zen .editor-status,
+.app.zen .doc-foot {
+  display: none;
+}
+
+.zen-titlebar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding-left: 14px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 90;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.zen-titlebar-title {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.zen-titlebar-hint {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.zen-titlebar .zen-btn {
+  flex: 0 0 auto;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-2);
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+  -webkit-app-region: no-drag;
+}
+
+.zen-titlebar .zen-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.zen-titlebar .window-controls {
+  margin-left: auto;
 }

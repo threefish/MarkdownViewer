@@ -88,6 +88,7 @@ export interface PathStat {
   isText: boolean
   isPdf: boolean
   isImage: boolean
+  isXmind: boolean
 }
 
 export interface PdfMeta {
@@ -183,10 +184,33 @@ export interface PdfExportResult {
   canceled?: boolean
 }
 
+export interface BinaryFilePayload {
+  path: string
+  name: string
+  data: Uint8Array
+}
+
+export interface SaveAsPayload {
+  defaultName: string
+  filterName: string
+  extensions: string[]
+  content?: string
+  data?: Uint8Array
+}
+
+export interface SaveAsResult {
+  ok: boolean
+  path?: string
+  canceled?: boolean
+  message?: string
+}
+
 export interface MdvApi {
-  openDialog(mode: 'file' | 'folder' | 'image' | 'drawing'): Promise<string | null>
+  openDialog(mode: 'file' | 'folder' | 'image' | 'drawing' | 'xmind'): Promise<string | null>
   readDoc(path: string): Promise<DocPayload>
   readScene(path: string): Promise<DocPayload>
+  readBinary(path: string): Promise<BinaryFilePayload>
+  saveAs(payload: SaveAsPayload): Promise<SaveAsResult>
   pdfMeta(path: string): Promise<PdfMeta>
   imageMeta(path: string): Promise<ImageMeta>
   unwatchDoc(path: string): Promise<void>
@@ -220,6 +244,8 @@ export interface MdvApi {
   patchSettings(patch: Partial<Settings>): Promise<SettingsBundle>
   resetSettings(): Promise<SettingsBundle>
   pendingFile(): Promise<string | null>
+  zenInfo(): Promise<{ path: string | null }>
+  openMainWindow(): void
   assocStatus(): Promise<AssocInfo>
   assocRegister(): Promise<AssocInfo>
   assocUnregister(): Promise<AssocInfo>

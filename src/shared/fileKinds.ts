@@ -7,7 +7,7 @@ const TEXT_EXTS = new Set([
   'hpp', 'hrl', 'hs', 'htm', 'html', 'ini', 'java', 'js', 'json', 'json5', 'jsonc',
   'jsx', 'kt', 'kts', 'less', 'lhs', 'lock', 'log', 'lua', 'm', 'markdown', 'md', 'mjs',
   'mm', 'mts', 'nfo', 'patch', 'php', 'pl', 'pm', 'properties', 'proto', 'ps1', 'psm1',
-  'py', 'pyw', 'r', 'rb', 'rst', 'rs', 'sass', 'scala', 'scss', 'sh', 'sql', 'srt',
+  'py', 'pyw', 'r', 'rb', 'rst', 'rs', 'sass', 'scala', 'scss', 'sh', 'smm', 'sql', 'srt',
   'sty', 'svelte', 'swift', 'tex', 'text', 'toml', 'ts', 'tsv', 'tsx', 'txt', 'vue',
   'vtt', 'xhtml', 'xml', 'yaml', 'yml', 'zsh'
 ])
@@ -57,6 +57,15 @@ export function isMarkdownFile(p: string): boolean {
 
 export function isExcalidrawFile(p: string): boolean {
   return fileExt(p) === 'excalidraw'
+}
+
+export function isMindMapFile(p: string): boolean {
+  return fileExt(p) === 'smm'
+}
+
+// .xmind 是 zip 包，只能作为二进制导入，不能按文本读写
+export function isXmindFile(p: string): boolean {
+  return fileExt(p) === 'xmind'
 }
 
 export function isPdfFile(p: string): boolean {

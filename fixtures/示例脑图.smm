@@ -1,0 +1,80 @@
+{
+  "layout": "mindMap",
+  "root": {
+    "data": {
+      "text": "md-viewer 脑图"
+    },
+    "children": [
+      {
+        "data": {
+          "text": "编辑能力"
+        },
+        "children": [
+          {
+            "data": {
+              "text": "双击节点编辑文字"
+            }
+          },
+          {
+            "data": {
+              "text": "Tab 插入子主题"
+            }
+          },
+          {
+            "data": {
+              "text": "Enter 插入同级主题"
+            }
+          },
+          {
+            "data": {
+              "text": "Delete 删除节点"
+            }
+          },
+          {
+            "data": {
+              "text": "Ctrl+Z / Ctrl+Y 撤销重做"
+            }
+          }
+        ]
+      },
+      {
+        "data": {
+          "text": "布局与导出"
+        },
+        "children": [
+          {
+            "data": {
+              "text": "切换思维导图 / 逻辑图 / 组织结构图"
+            }
+          },
+          {
+            "data": {
+              "text": "导出 XMind / PNG / SVG"
+            }
+          }
+        ]
+      },
+      {
+        "data": {
+          "text": "文件格式"
+        },
+        "children": [
+          {
+            "data": {
+              "text": ".smm 本地保存"
+            }
+          },
+          {
+            "data": {
+              "text": ".xmind 导入后另存为 .smm"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "theme": {
+    "template": "default",
+    "config": {}
+  }
+}

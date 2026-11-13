@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { isImageFile, isTextFile } from '../shared/fileKinds'
+import { isImageFile, isPdfFile, isTextFile, isXmindFile } from '../shared/fileKinds'
 
 /**
  * Extract a supported text/markdown file or folder path from a raw argv list.
@@ -23,7 +23,13 @@ export function findOpenArgument(
     if (cwd && path.resolve(p) === path.resolve(cwd)) continue
     try {
       const st = statSync(p)
-      if (st.isDirectory() || (st.isFile() && (isTextFile(p) || isImageFile(p)))) return p
+      if (
+        st.isDirectory() ||
+        (st.isFile() &&
+          (isTextFile(p) || isImageFile(p) || isPdfFile(p) || isXmindFile(p)))
+      ) {
+        return p
+      }
     } catch {
       // not a real path token
     }

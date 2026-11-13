@@ -12,10 +12,11 @@ import {
 } from 'react'
 import type { AppInfo, ContentFont, DocPayload, FsEntry, Settings, ThemeMode } from '../../shared/types'
 import { isThemePreference } from '../../shared/themes'
-import { isExcalidrawFile, isImageFile, isMarkdownFile, isPdfFile } from '../../shared/fileKinds'
+import { isExcalidrawFile, isImageFile, isMarkdownFile, isMindMapFile, isPdfFile } from '../../shared/fileKinds'
 import { AboutDialog } from './components/AboutDialog'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import type { EditorHandle } from './components/Editor'
+import type { MindMapHandle } from './components/MindMapPane'
 import { EmptyState } from './components/EmptyState'
 import { HiddenRestoreDialog } from './components/HiddenRestoreDialog'
 import { InsertAssetDialog } from './components/InsertAssetDialog'
@@ -30,6 +31,7 @@ import { Sidebar } from './components/Sidebar'
 import { SplitPreview, type SplitPreviewHandle } from './components/SplitPreview'
 import { TabBar, type TabInfo } from './components/TabBar'
 import { TitleBar } from './components/TitleBar'
+import { ZenTitleBar } from './components/ZenTitleBar'
 import { WidthControl } from './components/WidthControl'
 import { MarkdownDocument } from './lib/markdown'
 import { languageKeyForPath } from './lib/codeLanguage'
@@ -45,6 +47,10 @@ const Editor = lazy(() =>
 
 const ExcalidrawPane = lazy(() =>
   import('./components/ExcalidrawPane').then((module) => ({ default: module.ExcalidrawPane }))
+)
+
+const MindMapPane = lazy(() =>
+  import('./components/MindMapPane').then((module) => ({ default: module.MindMapPane }))
 )
 
 const PdfView = lazy(() =>
@@ -208,6 +214,7 @@ export default function App(): JSX.Element {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [pendingHash, setPendingHash] = useState<string | null>(null)
+  const [zenPath, setZenPath] = useState<string | null>(null)
 
   const [tabs, setTabsState] = useState<DocTab[]>([])
   const [activeId, setActiveIdState] = useState<string | null>(null)
@@ -240,6 +247,7 @@ export default function App(): JSX.Element {
   const activeIdRef = useRef<string | null>(null)
   const readerRef = useRef<HTMLDivElement>(null)
   const editorHandle = useRef<EditorHandle | null>(null)
+  const mindMapHandle = useRef<MindMapHandle | null>(null)
   const workspaceRef = useRef<HTMLDivElement>(null)
   const previewHandle = useRef<SplitPreviewHandle | null>(null)
   const leaderRef = useRef<'editor' | 'preview'>('editor')
@@ -249,6 +257,7 @@ export default function App(): JSX.Element {
   const rootsRef = useRef<string[]>([])
   const settingsRef = useRef<Settings>(INITIAL_SETTINGS)
   const restoredRef = useRef(false)
+  const zenRef = useRef(false)
   const persistedTabsRef = useRef('')
   const scrollMap = useRef(new Map<string, number>())
   const editorScrollMap = useRef(new Map<string, number>())
@@ -371,11 +380,12 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     if (!active) {
-      document.title = 'Markdown Viewer'
+      document.title = zenPath ? '禅模式 — Markdown Viewer' : 'Markdown Viewer'
       return
     }
-    document.title = `${isDirty(active) ? '● ' : ''}${active.name} — Markdown Viewer`
-  }, [active])
+    const suffix = zenPath ? '禅模式' : 'Markdown Viewer'
+    document.title = `${isDirty(active) ? '● ' : ''}${active.name} — ${suffix}`
+  }, [active, zenPath])
 
   const patchRecents = useCallback(async (payload: DocPayload) => {
     const previous = settingsRef.current
@@ -571,6 +581,39 @@ export default function App(): JSX.Element {
     [activateTab, ensureRootFor, patchRecents, revealFile, setActiveId, setTabs]
   )
 
+  const importXmind = useCallback(
+    async (path: string) => {
+      setNotice('正在解析 XMind…')
+      try {
+        const bin = await window.mdv.readBinary(path)
+        const { parseXmindFile } = await import('./lib/xmind')
+        const buffer = new Uint8Array(bin.data).buffer as ArrayBuffer
+        const tree = await parseXmindFile(new File([buffer], bin.name))
+        const content = JSON.stringify({ layout: 'mindMap', root: tree }, null, 2)
+        const stem = bin.name.replace(/\.xmind$/i, '') || '思维导图'
+        const saved = await window.mdv.saveAs({
+          defaultName: `${stem}.smm`,
+          filterName: '思维导图',
+          extensions: ['smm'],
+          content
+        })
+        if (saved.canceled) {
+          setNotice(null)
+          return
+        }
+        if (!saved.ok || !saved.path) {
+          setNotice(`导入失败：${saved.message ?? '未知错误'}`)
+          return
+        }
+        await openDoc(saved.path)
+        setNotice(`已导入 XMind：${basenameOf(saved.path)}`)
+      } catch (err) {
+        setNotice(`导入 XMind 失败：${errorMessage(err)}`)
+      }
+    },
+    [openDoc]
+  )
+
   const openPath = useCallback(
     async (path: string) => {
       try {
@@ -578,6 +621,10 @@ export default function App(): JSX.Element {
         if (stat.kind === 'dir') {
           addDirToTree(path)
           setNotice(null)
+          return
+        }
+        if (stat.kind === 'file' && stat.isXmind) {
+          await importXmind(path)
           return
         }
         if (stat.kind === 'file' && (stat.isText || stat.isPdf || stat.isImage)) {
@@ -593,7 +640,7 @@ export default function App(): JSX.Element {
         setNotice(errorMessage(err))
       }
     },
-    [addDirToTree, openDoc]
+    [addDirToTree, importXmind, openDoc]
   )
 
   const openPaths = useCallback(
@@ -947,7 +994,9 @@ export default function App(): JSX.Element {
 
   const openFind = useCallback(() => {
     const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
-    if (!tab || isExcalidrawFile(tab.path) || isImageFile(tab.path)) return
+    if (!tab || isExcalidrawFile(tab.path) || isMindMapFile(tab.path) || isImageFile(tab.path)) {
+      return
+    }
     if (isPdfFile(tab.path)) {
       setPdfFindSignal((value) => value + 1)
       return
@@ -968,7 +1017,9 @@ export default function App(): JSX.Element {
 
   const toggleSearch = useCallback(() => {
     const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
-    if (!tab || isExcalidrawFile(tab.path) || isImageFile(tab.path)) return
+    if (!tab || isExcalidrawFile(tab.path) || isMindMapFile(tab.path) || isImageFile(tab.path)) {
+      return
+    }
     if (isPdfFile(tab.path)) {
       setPdfFindSignal((value) => value + 1)
       return
@@ -1501,12 +1552,22 @@ export default function App(): JSX.Element {
 
   const handleAction = useCallback(
     (action: MenuAction, payload?: string) => {
+      const activeMindMap = (): MindMapHandle | null => {
+        const tab = tabsRef.current.find((item) => item.path === activeIdRef.current)
+        return tab && isMindMapFile(tab.path) ? mindMapHandle.current : null
+      }
       switch (action) {
         case 'open-file':
           void pickFile()
           break
         case 'open-folder':
           void pickFolder()
+          break
+        case 'import-xmind':
+          void (async () => {
+            const picked = await window.mdv.openDialog('xmind')
+            if (picked) await importXmind(picked)
+          })()
           break
         case 'new-file':
           startCreate('file')
@@ -1541,24 +1602,42 @@ export default function App(): JSX.Element {
         case 'quit':
           requestQuit()
           break
-        case 'undo':
-          editorHandle.current?.undo()
+        case 'undo': {
+          const mind = activeMindMap()
+          if (mind) mind.undo()
+          else editorHandle.current?.undo()
           break
-        case 'redo':
-          editorHandle.current?.redo()
+        }
+        case 'redo': {
+          const mind = activeMindMap()
+          if (mind) mind.redo()
+          else editorHandle.current?.redo()
           break
-        case 'cut':
-          window.mdv.editAction('cut')
+        }
+        case 'cut': {
+          const mind = activeMindMap()
+          if (mind) mind.cut()
+          else window.mdv.editAction('cut')
           break
-        case 'copy':
-          window.mdv.editAction('copy')
+        }
+        case 'copy': {
+          const mind = activeMindMap()
+          if (mind) mind.copy()
+          else window.mdv.editAction('copy')
           break
-        case 'paste':
-          window.mdv.editAction('paste')
+        }
+        case 'paste': {
+          const mind = activeMindMap()
+          if (mind) mind.paste()
+          else window.mdv.editAction('paste')
           break
-        case 'select-all':
-          selectAllContent()
+        }
+        case 'select-all': {
+          const mind = activeMindMap()
+          if (mind) mind.selectAll()
+          else selectAllContent()
           break
+        }
         case 'find':
           openFind()
           break
@@ -1586,6 +1665,7 @@ export default function App(): JSX.Element {
     [
       pickFile,
       pickFolder,
+      importXmind,
       openPath,
       startCreate,
       saveActive,
@@ -1621,14 +1701,27 @@ export default function App(): JSX.Element {
         setSidebarWidth(saved.sidebarWidth)
         setSplitRatio(saved.editSplitRatio)
         setCollapsed(saved.sidebarCollapsed)
+        void window.mdv.appInfo().then((info) => {
+          if (!cancelled) setAppInfo(info)
+        })
+        const zen = await window.mdv.zenInfo().catch(() => ({ path: null }))
+        if (zen.path) {
+          zenRef.current = true
+          if (cancelled) return
+          setZenPath(zen.path)
+          await openDoc(zen.path, undefined, {
+            quiet: false,
+            recents: false,
+            reveal: false,
+            attach: false
+          })
+          return
+        }
         rootsRef.current = restore ? saved.roots : []
         setRoots(rootsRef.current)
         const expanded = new Set(restore ? saved.expandedDirs : [])
         if (restore && !expanded.size) saved.roots.forEach((root) => expanded.add(root))
         setExpandedDirs(expanded)
-        void window.mdv.appInfo().then((info) => {
-          if (!cancelled) setAppInfo(info)
-        })
         const pending = await window.mdv.pendingFile()
         for (const path of restore ? saved.openTabs : []) {
           if (cancelled) return
@@ -1659,7 +1752,7 @@ export default function App(): JSX.Element {
   }, [activateTab, openDoc, openPath])
 
   useEffect(() => {
-    if (!restoredRef.current) return
+    if (!restoredRef.current || zenRef.current) return
     const paths = tabs.map((tab) => tab.path)
     const key = `${activeId ?? ''}\n${paths.join('\n')}`
     if (persistedTabsRef.current === key) return
@@ -1668,12 +1761,12 @@ export default function App(): JSX.Element {
   }, [activeId, restoreTick, tabs, updateSettings])
 
   useEffect(() => {
-    if (!restoredRef.current) return
+    if (!restoredRef.current || zenRef.current) return
     void updateSettings({ roots })
   }, [restoreTick, roots, updateSettings])
 
   useEffect(() => {
-    if (!restoredRef.current) return
+    if (!restoredRef.current || zenRef.current) return
     void updateSettings({ expandedDirs: [...expandedDirs] })
   }, [expandedDirs, restoreTick, updateSettings])
 
@@ -1729,7 +1822,7 @@ export default function App(): JSX.Element {
       }),
       window.mdv.onCloseRequest(() => requestQuit()),
       window.mdv.onPathsDropped((paths) => {
-        void openPaths(paths)
+        if (!zenRef.current) void openPaths(paths)
       })
     ]
     return () => offs.forEach((off) => off())
@@ -1738,6 +1831,13 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (document.querySelector('.modal[aria-modal="true"], .lightbox[aria-modal="true"]')) return
+      if (zenRef.current) {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          window.mdv.closeWindow()
+        }
+        return
+      }
       if (event.key === 'F5') {
         event.preventDefault()
         commandRef.current('reload')
@@ -1819,6 +1919,7 @@ export default function App(): JSX.Element {
     const needsEditor =
       !!active &&
       !isExcalidrawFile(active.path) &&
+      !isMindMapFile(active.path) &&
       (active.editing || !isMarkdownFile(active.path) || isLargeDoc(active.content.length))
     if (!needsEditor) {
       editorHandle.current = null
@@ -1928,6 +2029,7 @@ export default function App(): JSX.Element {
 
   const activeIsMd = active ? isMarkdownFile(active.path) : false
   const activeIsDrawing = active ? isExcalidrawFile(active.path) : false
+  const activeIsMindMap = active ? isMindMapFile(active.path) : false
   const activeIsPdf = !!active && (active.kind === 'pdf' || isPdfFile(active.path))
   const activeIsImage = !!active && (active.kind === 'image' || isImageFile(active.path))
   const pdfOutline =
@@ -1946,17 +2048,20 @@ export default function App(): JSX.Element {
   const showEditor =
     !!active &&
     !activeIsDrawing &&
+    !activeIsMindMap &&
     !activeIsPdf &&
     !activeIsImage &&
     (!activeIsMd || mdAsSource || active.editing)
   const codeReadOnly =
     !!active &&
     !activeIsDrawing &&
+    !activeIsMindMap &&
     !activeIsPdf &&
     !activeIsImage &&
     !active.editing &&
     (!activeIsMd || mdAsSource)
   const showDrawing = !!active && activeIsDrawing
+  const showMindMap = !!active && activeIsMindMap
   const showPdf = !!active && activeIsPdf
   const showImage = !!active && activeIsImage
 
@@ -1968,7 +2073,7 @@ export default function App(): JSX.Element {
     !activeIsPdf &&
     !activeIsImage
   const splitActive = splitAllowed && settings.editPreview
-  const showMdToolbar = !!active && activeIsMd && active.editing
+  const showMdToolbar = !!active && activeIsMd && active.editing && !zenPath
 
   const docKey = active
     ? `${active.path}#${active.mtimeMs}#${active.content.length}#${active.editing ? 'e' : 'v'}${
@@ -2053,7 +2158,11 @@ export default function App(): JSX.Element {
         ? `${active.name} · 画板${active.editing ? '' : ' · 只读'}${
             dirty ? ' · 未保存的修改' : ''
           }${active.externalChanged ? ' · 文件已在外部修改' : ''}`
-        : activeLite
+        : activeIsMindMap
+          ? `${active.name} · 脑图${active.editing ? '' : ' · 只读'}${
+              dirty ? ' · 未保存的修改' : ''
+            }${active.externalChanged ? ' · 文件已在外部修改' : ''}`
+          : activeLite
           ? `${active.name} · 大文件模式${
               active.editing
                 ? `${dirty ? ' · 未保存的修改' : ''}${
@@ -2073,7 +2182,11 @@ export default function App(): JSX.Element {
       ? active?.editing
         ? 'Ctrl+S 保存 · Ctrl+E 阅读'
         : 'Ctrl+E 编辑'
-      : activeLite
+      : activeIsMindMap
+        ? active?.editing
+          ? 'Ctrl+S 保存 · Ctrl+E 阅读'
+          : 'Ctrl+E 编辑'
+        : activeLite
         ? active?.editing
           ? 'Ctrl+S 保存 · Ctrl+E 阅读 · Ctrl+F 在编辑器内查找'
           : 'Ctrl+E 编辑 · Ctrl+F 查找'
@@ -2096,6 +2209,7 @@ export default function App(): JSX.Element {
     editing: !!active?.editing,
     dirty,
     pdf: activeIsPdf || activeIsImage,
+    mindMap: activeIsMindMap,
     canExportPdf: !!active && activeIsMd && !activeIsPdf && activeTier === 'normal',
     editPreview: splitActive,
     canEditPreview: splitAllowed,
@@ -2114,16 +2228,25 @@ export default function App(): JSX.Element {
     : 0
 
   return (
-    <div className="app">
-      <TitleBar
-        state={menuState}
-        onAction={handleAction}
-        sidebarCollapsed={collapsed}
-        onToggleSidebar={toggleSidebar}
-      />
+    <div className={`app${zenPath ? ' zen' : ''}`}>
+      {zenPath ? (
+        <ZenTitleBar
+          title={active?.name ?? ''}
+          path={active?.path ?? zenPath}
+          onOpenMain={() => window.mdv.openMainWindow()}
+        />
+      ) : (
+        <TitleBar
+          state={menuState}
+          onAction={handleAction}
+          sidebarCollapsed={collapsed}
+          onToggleSidebar={toggleSidebar}
+        />
+      )}
 
       <div className="app-body">
-        <Sidebar
+        {zenPath ? null : (
+          <Sidebar
           roots={roots}
           tab={sidebarTab}
           onTab={setSidebarTab}
@@ -2154,27 +2277,30 @@ export default function App(): JSX.Element {
           onPickHidden={openHiddenPicker}
           onRemoveRoot={removeRoot}
           onResizeCommit={persistSidebarWidth}
-        />
+          />
+        )}
 
         <div
           className={`main${active?.editing ? ' editing' : ''}${
             showEditor || showDrawing || showPdf ? ' has-editor' : ''
           }${splitActive ? ' split' : ''}`}
         >
-          <TabBar
-            tabs={tabInfos}
-            activePath={active?.path ?? null}
-            canBack={navState.canBack}
-            canForward={navState.canForward}
-            onBack={() => goNav(-1)}
-            onForward={() => goNav(1)}
-            onActivate={(path) => activateTab(path)}
-            onClose={requestCloseTab}
-            onClosePaths={requestClosePaths}
-            onNew={() => startCreate('file')}
-            listOpen={tabsListOpen}
-            onToggleList={() => setTabsListOpen((open) => !open)}
-          />
+          {zenPath ? null : (
+            <TabBar
+              tabs={tabInfos}
+              activePath={active?.path ?? null}
+              canBack={navState.canBack}
+              canForward={navState.canForward}
+              onBack={() => goNav(-1)}
+              onForward={() => goNav(1)}
+              onActivate={(path) => activateTab(path)}
+              onClose={requestCloseTab}
+              onClosePaths={requestClosePaths}
+              onNew={() => startCreate('file')}
+              listOpen={tabsListOpen}
+              onToggleList={() => setTabsListOpen((open) => !open)}
+            />
+          )}
 
           {notice || active?.deleted || active?.banner || active?.externalChanged ? (
             <div className="notice-layer">
@@ -2370,6 +2496,36 @@ export default function App(): JSX.Element {
             </div>
           ) : null}
 
+          {showMindMap && active ? (
+            <div className="editor-pane">
+              <Suspense fallback={<div className="editor-fallback">正在加载脑图…</div>}>
+                <MindMapPane
+                  key={active.path}
+                  content={active.content}
+                  draft={active.draft}
+                  editing={active.editing}
+                  baseName={active.name.replace(/\.[^.]+$/, '')}
+                  onChange={(next) => updateTab(active.path, { draft: next })}
+                  onNotice={setNotice}
+                  onReady={(handle) => {
+                    mindMapHandle.current = handle
+                  }}
+                />
+              </Suspense>
+              <div className="editor-status">
+                <span>{statusLeft}</span>
+                <span className="status-actions">
+                  {statusRight}
+                  {activeHuge && !active.editing ? (
+                    <button type="button" className="mini-btn" onClick={toggleEdit}>
+                      启用编辑
+                    </button>
+                  ) : null}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
           {splitActive ? (
             <div
               className="split-resizer"
@@ -2428,7 +2584,7 @@ export default function App(): JSX.Element {
           ) : null}
           </div>
 
-          {active && !activeIsPdf && !activeIsImage ? (
+          {active && !activeIsPdf && !activeIsImage && !zenPath ? (
             <div className="float-actions" role="toolbar" aria-label="文档操作">
               <button
                 type="button"
@@ -2436,9 +2592,11 @@ export default function App(): JSX.Element {
                 title={
                   activeIsDrawing
                     ? '编辑画板 (Ctrl+E)'
-                    : activeIsMd
-                      ? '编辑 Markdown (Ctrl+E)'
-                      : '编辑文本 (Ctrl+E)'
+                    : activeIsMindMap
+                      ? '编辑脑图 (Ctrl+E)'
+                      : activeIsMd
+                        ? '编辑 Markdown (Ctrl+E)'
+                        : '编辑文本 (Ctrl+E)'
                 }
                 aria-pressed={active.editing}
                 onClick={() => {
@@ -2469,7 +2627,7 @@ export default function App(): JSX.Element {
                   <SplitIcon />
                 </button>
               ) : null}
-              {activeIsDrawing ? null : (
+              {activeIsDrawing || activeIsMindMap ? null : (
                 <>
                   <button
                     type="button"

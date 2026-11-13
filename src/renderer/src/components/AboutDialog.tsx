@@ -58,6 +58,25 @@ const SHORTCUT_COLUMNS: ShortcutGroup[][] = [
         { keys: [['Ctrl', 'Alt', '[']], label: '折叠全部' },
         { keys: [['Ctrl', 'Alt', ']']], label: '展开全部' }
       ]
+    },
+    {
+      title: '脑图编辑',
+      shortcuts: [
+        { keys: [['Tab']], label: '插入子主题' },
+        { keys: [['Enter']], label: '插入同级主题' },
+        { keys: [['Shift', 'Tab']], label: '插入父主题' },
+        { keys: [['Del'], ['Backspace']], label: '删除选中主题' },
+        { keys: [['F2']], label: '编辑主题文字' },
+        { keys: [['/']], label: '展开 / 收起主题' },
+        { keys: [['Ctrl', 'A']], label: '选中全部主题' },
+        { keys: [['Ctrl', 'C']], label: '复制主题' },
+        { keys: [['Ctrl', 'X']], label: '剪切主题' },
+        { keys: [['Ctrl', 'V']], label: '粘贴主题' },
+        { keys: [['Ctrl', 'Z']], label: '撤销' },
+        { keys: [['Ctrl', 'Y']], label: '重做' },
+        { keys: [['Ctrl', 'L']], label: '整理布局' },
+        { keys: [['Ctrl', 'Enter']], label: '根主题居中' }
+      ]
     }
   ],
   [
@@ -104,6 +123,10 @@ const SHORTCUT_COLUMNS: ShortcutGroup[][] = [
         { keys: [['0']], label: '重置缩放与旋转' },
         { keys: [['Esc']], label: '关闭图片' }
       ]
+    },
+    {
+      title: '禅模式',
+      shortcuts: [{ keys: [['Esc']], label: '退出禅模式（关闭该窗口）' }]
     },
     {
       title: '窗口与弹窗',
@@ -172,8 +195,10 @@ export function AboutDialog({ open, version, onClose }: Props): React.JSX.Elemen
         </header>
         <div className="about-scroll">
           <p className="about-desc">
-            本地 Markdown 阅读与编辑器，支持 GFM、KaTeX 公式、Mermaid 图表与 Excalidraw
-            画板（可新建、编辑，并在 Markdown 中嵌入预览），也可查看和编辑常见文本与代码文件。
+            本地 Markdown 阅读与编辑器，支持 GFM、KaTeX 公式、Mermaid 图表、Excalidraw
+            画板（可新建、编辑，并在 Markdown 中嵌入预览）与思维导图（.smm，支持导入导出
+            XMind），也可查看和编辑常见文本与代码文件。在资源管理器中双击受支持的文件，
+            会在独立的禅模式窗口中专注阅读，多个文件可同时打开多个禅模式窗口。
           </p>
           <h3 className="about-section-title">键盘快捷键</h3>
           <div className="shortcut-grid">

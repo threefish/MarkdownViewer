@@ -1,16 +1,19 @@
 import {
   app,
+  BrowserWindow,
   clipboard,
   dialog,
   ipcMain,
   shell,
-  type BrowserWindow,
-  type OpenDialogOptions
+  type OpenDialogOptions,
+  type SaveDialogOptions,
+  type WebContents
 } from 'electron'
 import { constants as fsConstants, promises as fs } from 'node:fs'
 import path from 'node:path'
 import type {
   AssocInfo,
+  BinaryFilePayload,
   CopyEntryResult,
   CreateEntryResult,
   DocPayload,
@@ -21,6 +24,8 @@ import type {
   PdfMeta,
   RenameEntryResult,
   RestoreResult,
+  SaveAsPayload,
+  SaveAsResult,
   SavePastedImageResult,
   SearchResult,
   SettingsBundle,
@@ -31,8 +36,10 @@ import {
   imageFileExtensions,
   isExcalidrawFile,
   isImageFile,
+  isMindMapFile,
   isPdfFile,
   isTextFile,
+  isXmindFile,
   textFileExtensions
 } from '../shared/fileKinds'
 import { themeBackground } from '../shared/themes'
@@ -51,7 +58,7 @@ import {
   renameWatchedDirs,
   resumeWatchedDirs
 } from './watcher'
-import { closeMainWindow } from './window'
+import { broadcast, closeAllWindows, zenFileFor } from './window'
 import { exportDocumentToPdf, takePrintPayload } from './pdf'
 import { getAssocInfo, registerAssociation, unregisterAssociation } from './registry'
 
@@ -115,11 +122,6 @@ async function uniqueChildName(dir: string, fileName: string): Promise<string> {
   throw new Error('同名文件过多，无法写入')
 }
 
-function send(getWin: WindowGetter, channel: string, payload: unknown): void {
-  const win = getWin()
-  if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
-}
-
 async function readDocument(rawPath: string): Promise<DocPayload> {
   const target = requireAbsPath(rawPath, '文档路径')
   if (!isTextFile(target)) throw new Error('不是支持的文本文件')
@@ -142,9 +144,13 @@ async function readDocument(rawPath: string): Promise<DocPayload> {
   }
 }
 
-export function registerIpc(getWin: WindowGetter): void {
-  ipcMain.handle('dialog:open', async (_event, mode: 'file' | 'folder' | 'image' | 'drawing') => {
-    const win = getWin()
+export function registerIpc(getWin: WindowGetter, ensureMainWindow: () => void): void {
+  // 多窗口（主窗口 + 禅模式窗口）：对话框、窗口控制跟随发起请求的窗口。
+  const winFor = (event: { sender: WebContents }): BrowserWindow | null =>
+    BrowserWindow.fromWebContents(event.sender) ?? getWin()
+
+  ipcMain.handle('dialog:open', async (event, mode: 'file' | 'folder' | 'image' | 'drawing' | 'xmind') => {
+    const win = winFor(event)
     const options: OpenDialogOptions =
       mode === 'folder'
         ? { properties: ['openDirectory'] }
@@ -164,15 +170,24 @@ export function registerIpc(getWin: WindowGetter): void {
                   { name: '所有文件', extensions: ['*'] }
                 ]
               }
-            : {
-                properties: ['openFile'],
-                filters: [
-                  { name: '文本 / 代码', extensions: textFileExtensions() },
-                  { name: 'PDF 文档', extensions: ['pdf'] },
-                  { name: '图片', extensions: imageFileExtensions() },
-                  { name: '所有文件', extensions: ['*'] }
-                ]
-              }
+            : mode === 'xmind'
+              ? {
+                  properties: ['openFile'],
+                  filters: [
+                    { name: 'XMind 脑图', extensions: ['xmind'] },
+                    { name: '所有文件', extensions: ['*'] }
+                  ]
+                }
+              : {
+                  properties: ['openFile'],
+                  filters: [
+                    { name: '文本 / 代码', extensions: textFileExtensions() },
+                    { name: 'PDF 文档', extensions: ['pdf'] },
+                    { name: '图片', extensions: imageFileExtensions() },
+                    { name: 'XMind 脑图', extensions: ['xmind'] },
+                    { name: '所有文件', extensions: ['*'] }
+                  ]
+                }
     const result = win
       ? await dialog.showOpenDialog(win, options)
       : await dialog.showOpenDialog(options)
@@ -182,14 +197,67 @@ export function registerIpc(getWin: WindowGetter): void {
   ipcMain.handle('doc:read', async (_event, rawPath: string): Promise<DocPayload> => {
     const doc = await readDocument(rawPath)
     watchDocument(doc.path, {
-      changed: (file, mtimeMs) => send(getWin, 'doc:changed', { path: file, mtimeMs }),
-      deleted: (file) => send(getWin, 'doc:deleted', { path: file })
+      changed: (file, mtimeMs) => broadcast('doc:changed', { path: file, mtimeMs }),
+      deleted: (file) => broadcast('doc:deleted', { path: file })
     })
     return doc
   })
 
   ipcMain.handle('doc:unwatch', (_event, rawPath: string) => {
     if (typeof rawPath === 'string' && path.isAbsolute(rawPath)) unwatchDocument(rawPath)
+  })
+
+  // XMind 是 zip 包，导入时按二进制读取字节，由渲染层解析
+  ipcMain.handle('file:read-binary', async (_event, rawPath: string): Promise<BinaryFilePayload> => {
+    const target = requireAbsPath(rawPath, '文件路径')
+    if (!isXmindFile(target)) throw new Error('不是 XMind 文件')
+    const real = await fs.realpath(target)
+    const stat = await fs.stat(real)
+    if (!stat.isFile()) throw new Error('目标不是文件')
+    if (stat.size > 50 * 1024 * 1024) throw new Error('文件超过 50MB，暂不支持导入')
+    const buf = await fs.readFile(real)
+    return { path: real, name: path.basename(real), data: new Uint8Array(buf) }
+  })
+
+  // 导出 / 导入另存：由用户选择保存位置，原子写入，不覆盖未确认的路径
+  ipcMain.handle('file:save-as', async (event, raw: SaveAsPayload): Promise<SaveAsResult> => {
+    try {
+      const defaultName = typeof raw?.defaultName === 'string' ? path.basename(raw.defaultName) : ''
+      if (!defaultName) return { ok: false, message: '默认文件名无效' }
+      const extensions = Array.isArray(raw?.extensions)
+        ? raw.extensions.filter((ext): ext is string => typeof ext === 'string' && /^[a-z0-9]+$/i.test(ext))
+        : []
+      if (!extensions.length) return { ok: false, message: '缺少文件扩展名' }
+      const content = typeof raw?.content === 'string' ? raw.content : undefined
+      const rawData = raw?.data as unknown
+      let data: Uint8Array | undefined
+      if (rawData instanceof Uint8Array) data = rawData
+      else if (rawData instanceof ArrayBuffer) data = new Uint8Array(rawData)
+      if (content === undefined && (!data || !data.byteLength)) {
+        return { ok: false, message: '没有可写入的内容' }
+      }
+      const filterName = typeof raw?.filterName === 'string' && raw.filterName ? raw.filterName : '文件'
+      const options: SaveDialogOptions = {
+        defaultPath: path.join(app.getPath('documents'), defaultName),
+        filters: [{ name: filterName, extensions }]
+      }
+      const win = winFor(event)
+      const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+      if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+      const target = result.filePath
+      const tmp = `${target}.mdv-${process.pid}.tmp`
+      try {
+        if (data) await fs.writeFile(tmp, data)
+        else await fs.writeFile(tmp, content as string, 'utf8')
+        await fs.rename(tmp, target)
+      } catch (err) {
+        await fs.unlink(tmp).catch(() => {})
+        throw err
+      }
+      return { ok: true, path: target }
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
   })
 
   // 嵌入预览只读取，不注册监听：watchDocument 按路径替换 handlers，会顶掉已打开标签页的监听。
@@ -211,8 +279,8 @@ export function registerIpc(getWin: WindowGetter): void {
       mtimeMs: stat.mtimeMs
     }
     watchDocument(meta.path, {
-      changed: (file, mtimeMs) => send(getWin, 'doc:changed', { path: file, mtimeMs }),
-      deleted: (file) => send(getWin, 'doc:deleted', { path: file })
+      changed: (file, mtimeMs) => broadcast('doc:changed', { path: file, mtimeMs }),
+      deleted: (file) => broadcast('doc:deleted', { path: file })
     })
     return meta
   })
@@ -231,8 +299,8 @@ export function registerIpc(getWin: WindowGetter): void {
       mtimeMs: stat.mtimeMs
     }
     watchDocument(meta.path, {
-      changed: (file, mtimeMs) => send(getWin, 'doc:changed', { path: file, mtimeMs }),
-      deleted: (file) => send(getWin, 'doc:deleted', { path: file })
+      changed: (file, mtimeMs) => broadcast('doc:changed', { path: file, mtimeMs }),
+      deleted: (file) => broadcast('doc:deleted', { path: file })
     })
     return meta
   })
@@ -241,12 +309,12 @@ export function registerIpc(getWin: WindowGetter): void {
 
   ipcMain.handle(
     'doc:export-pdf',
-    async (_event, raw: { path?: unknown; content?: unknown; baseDir?: unknown }): Promise<PdfExportResult> => {
+    async (event, raw: { path?: unknown; content?: unknown; baseDir?: unknown }): Promise<PdfExportResult> => {
       try {
         const docPath = requireAbsPath(raw?.path, '文档路径')
         const baseDir = requireAbsPath(raw?.baseDir, '目录路径')
         if (typeof raw?.content !== 'string') return { ok: false, message: '内容无效' }
-        return await exportDocumentToPdf(getWin(), { path: docPath, content: raw.content, baseDir })
+        return await exportDocumentToPdf(winFor(event), { path: docPath, content: raw.content, baseDir })
       } catch (err) {
         return { ok: false, message: err instanceof Error ? err.message : String(err) }
       }
@@ -415,7 +483,7 @@ export function registerIpc(getWin: WindowGetter): void {
 
   ipcMain.handle('fs:watch-dir', (_event, dir: string) => {
     if (typeof dir !== 'string' || !path.isAbsolute(dir)) return
-    watchDirectory(dir, { changed: (changed) => send(getWin, 'fs:dir-changed', { dir: changed }) })
+    watchDirectory(dir, { changed: (changed) => broadcast('fs:dir-changed', { dir: changed }) })
   })
 
   ipcMain.handle('fs:unwatch-dir', (_event, dir: string) => {
@@ -504,6 +572,13 @@ export function registerIpc(getWin: WindowGetter): void {
               elements: [],
               appState: { viewBackgroundColor: '#ffffff' },
               files: {}
+            }
+            await handle.writeFile(JSON.stringify(scene, null, 2), 'utf8')
+          } else if (isMindMapFile(target)) {
+            const scene = {
+              layout: 'mindMap',
+              root: { data: { text: '中心主题' } },
+              theme: { template: 'default', config: {} }
             }
             await handle.writeFile(JSON.stringify(scene, null, 2), 'utf8')
           }
@@ -652,19 +727,22 @@ export function registerIpc(getWin: WindowGetter): void {
     try {
       real = await fs.realpath(requireAbsPath(rawPath))
     } catch {
-      return { kind: 'none', isText: false, isPdf: false, isImage: false }
+      return { kind: 'none', isText: false, isPdf: false, isImage: false, isXmind: false }
     }
     try {
       const stat = await fs.stat(real)
-      if (stat.isDirectory()) return { kind: 'dir', isText: false, isPdf: false, isImage: false }
+      if (stat.isDirectory()) {
+        return { kind: 'dir', isText: false, isPdf: false, isImage: false, isXmind: false }
+      }
       return {
         kind: 'file',
         isText: isTextFile(real),
         isPdf: isPdfFile(real),
-        isImage: isImageFile(real)
+        isImage: isImageFile(real),
+        isXmind: isXmindFile(real)
       }
     } catch {
-      return { kind: 'none', isText: false, isPdf: false, isImage: false }
+      return { kind: 'none', isText: false, isPdf: false, isImage: false, isXmind: false }
     }
   })
 
@@ -673,7 +751,7 @@ export function registerIpc(getWin: WindowGetter): void {
     return { settings, theme: resolveThemeMode(settings.themeMode) }
   })
 
-  ipcMain.handle('settings:patch', (_event, patch: Record<string, unknown>): SettingsBundle => {
+  ipcMain.handle('settings:patch', (event, patch: Record<string, unknown>): SettingsBundle => {
     const input: Record<string, unknown> = { ...(patch ?? {}) }
     const win = getWin()
     if (input.rememberWindowBounds === false) {
@@ -686,50 +764,54 @@ export function registerIpc(getWin: WindowGetter): void {
     const next = patchSettings(input as never)
     if (patch && typeof patch.themeMode === 'string') {
       applyNativeTheme(next.themeMode)
-      getWin()?.setBackgroundColor(themeBackground(resolveThemeMode(next.themeMode)))
+      winFor(event)?.setBackgroundColor(themeBackground(resolveThemeMode(next.themeMode)))
     }
     return { settings: next, theme: resolveThemeMode(next.themeMode) }
   })
 
-  ipcMain.handle('settings:reset', (): SettingsBundle => {
+  ipcMain.handle('settings:reset', (event): SettingsBundle => {
     const next = resetPreferences()
     applyNativeTheme(next.themeMode)
-    getWin()?.setBackgroundColor(themeBackground(resolveThemeMode(next.themeMode)))
+    winFor(event)?.setBackgroundColor(themeBackground(resolveThemeMode(next.themeMode)))
     return { settings: next, theme: resolveThemeMode(next.themeMode) }
   })
 
-  ipcMain.on('edit:action', (_event, action: unknown) => {
-    const wc = getWin()?.webContents
-    if (!wc) return
+  ipcMain.on('edit:action', (event, action: unknown) => {
+    const wc = event.sender
     if (action === 'cut') wc.cut()
     else if (action === 'copy') wc.copy()
     else if (action === 'paste') wc.paste()
   })
 
   ipcMain.on('app:close-confirm', () => {
-    closeMainWindow()
+    closeAllWindows()
   })
 
-  ipcMain.on('window:minimize', () => {
-    const win = getWin()
+  ipcMain.on('window:minimize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
     if (win && !win.isDestroyed()) win.minimize()
   })
 
-  ipcMain.on('window:toggle-maximize', () => {
-    const win = getWin()
+  ipcMain.on('window:toggle-maximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
     if (!win || win.isDestroyed()) return
     if (win.isMaximized()) win.unmaximize()
     else win.maximize()
   })
 
-  ipcMain.on('window:close', () => {
-    const win = getWin()
+  ipcMain.on('window:close', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
     if (win && !win.isDestroyed()) win.close()
   })
 
-  ipcMain.handle('window:is-maximized', () => {
-    const win = getWin()
+  ipcMain.handle('window:is-maximized', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
     return !!win && !win.isDestroyed() && win.isMaximized()
+  })
+
+  ipcMain.handle('zen:info', (event) => ({ path: zenFileFor(event.sender.id) }))
+  ipcMain.on('zen:open-main', () => {
+    ensureMainWindow()
   })
 
   ipcMain.handle('app:pending-file', (): string | null => {
@@ -768,9 +850,9 @@ export function registerIpc(getWin: WindowGetter): void {
     isPackaged: app.isPackaged
   }))
 
-  ipcMain.on('fs:paths-dropped', (_event, paths: unknown) => {
+  ipcMain.on('fs:paths-dropped', (event, paths: unknown) => {
     if (!Array.isArray(paths)) return
     const valid = paths.filter((p): p is string => typeof p === 'string' && path.isAbsolute(p))
-    if (valid.length) send(getWin, 'fs:paths-dropped', valid)
+    if (valid.length && !event.sender.isDestroyed()) event.sender.send('fs:paths-dropped', valid)
   })
 }

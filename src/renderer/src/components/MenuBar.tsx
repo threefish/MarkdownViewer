@@ -5,6 +5,7 @@ import { THEME_GROUPS } from '../../../shared/themes'
 export type MenuAction =
   | 'open-file'
   | 'open-folder'
+  | 'import-xmind'
   | 'new-file'
   | 'new-folder'
   | 'open-path'
@@ -34,6 +35,7 @@ export interface MenuState {
   editing: boolean
   dirty: boolean
   pdf: boolean
+  mindMap: boolean
   canExportPdf: boolean
   editPreview: boolean
   canEditPreview: boolean
@@ -106,6 +108,7 @@ function buildGroups(state: MenuState): Group[] {
         { separator: true },
         { label: '打开文件…', hint: 'Ctrl+O', action: 'open-file' },
         { label: '打开文件夹…', hint: 'Ctrl+Shift+O', action: 'open-folder' },
+        { label: '导入 XMind…', action: 'import-xmind' },
         { label: '最近打开', disabled: !recents.length, submenu: recentItems },
         { separator: true },
         {
@@ -115,7 +118,11 @@ function buildGroups(state: MenuState): Group[] {
           action: 'save'
         },
         {
-          label: state.editing ? '切换到阅读' : '编辑文本',
+          label: state.editing
+            ? '切换到阅读'
+            : state.mindMap
+              ? '编辑脑图'
+              : '编辑文本',
           hint: 'Ctrl+E',
           disabled: !state.hasDoc || state.pdf,
           action: 'toggle-edit'
