@@ -7,12 +7,17 @@ import { isDarkTheme } from '../../../shared/themes'
 
 type Scene = ReturnType<typeof restore>
 
+export interface ExcalidrawHandle {
+  center(): void
+}
+
 interface Props {
   content: string
   draft: string | null
   editing: boolean
   theme: ThemeMode
   onChange: (next: string | null) => void
+  onReady?: (handle: ExcalidrawHandle | null) => void
 }
 
 const PARSE_ERROR = '无法解析画板文件，文件可能已损坏。'
@@ -61,7 +66,14 @@ class PaneBoundary extends Component<{ children: ReactNode }, { failed: boolean 
   }
 }
 
-export function ExcalidrawPane({ content, draft, editing, theme, onChange }: Props): React.JSX.Element {
+export function ExcalidrawPane({
+  content,
+  draft,
+  editing,
+  theme,
+  onChange,
+  onReady
+}: Props): React.JSX.Element {
   const initial = useMemo(() => {
     try {
       return { scene: parseScene(draft ?? content), error: '' }
@@ -74,6 +86,9 @@ export function ExcalidrawPane({ content, draft, editing, theme, onChange }: Pro
   const [scene, setScene] = useState<Scene | null>(initial.scene)
   const [error, setError] = useState(initial.error)
   const [empty, setEmpty] = useState(initial.scene?.elements.length === 0)
+  const [apiReady, setApiReady] = useState(false)
+  // 打开文件时把内容居中，但不改变缩放；只做一次，后续平移/编辑保持用户视图
+  const centeredRef = useRef(false)
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null)
   const baselineRef = useRef<string | null>(null)
@@ -84,8 +99,23 @@ export function ExcalidrawPane({ content, draft, editing, theme, onChange }: Pro
   // Excalidraw 初始化时会补齐绑定关系，序列化结果可能与磁盘 JSON 不同；
   // 在用户真正动手之前，把画布回报的场景当作基线，避免打开文件即显示未保存。
   const adoptRef = useRef(draft === null || draft === content)
-  const propsRef = useRef({ content, draft, onChange })
-  propsRef.current = { content, draft, onChange }
+  const propsRef = useRef({ content, draft, onChange, onReady })
+  propsRef.current = { content, draft, onChange, onReady }
+
+  useEffect(
+    () => () => {
+      propsRef.current.onReady?.(null)
+    },
+    []
+  )
+
+  const center = useCallback((): void => {
+    const api = apiRef.current
+    if (!api) return
+    const elements = api.getSceneElements().filter((element) => !element.isDeleted)
+    if (!elements.length) return
+    api.scrollToContent(elements, { fitToContent: false, animate: false })
+  }, [])
 
   useEffect(() => {
     const disarm = (): void => {
@@ -125,7 +155,29 @@ export function ExcalidrawPane({ content, draft, editing, theme, onChange }: Pro
 
   const handleApi = useCallback((api: ExcalidrawImperativeAPI) => {
     apiRef.current = api
-  }, [])
+    setApiReady(true)
+    propsRef.current.onReady?.({ center })
+  }, [center])
+
+  useEffect(() => {
+    if (!apiReady || centeredRef.current) return
+    const api = apiRef.current
+    if (!api || !scene) return
+    centeredRef.current = true
+    const elements = scene.elements.filter((element) => !element.isDeleted)
+    if (!elements.length) return
+    // 等画布完成首次布局，避免用 0 尺寸计算视口偏移
+    let inner = 0
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        api.scrollToContent(elements, { fitToContent: false, animate: false })
+      })
+    })
+    return () => {
+      cancelAnimationFrame(outer)
+      cancelAnimationFrame(inner)
+    }
+  }, [apiReady, scene])
 
   useEffect(() => {
     const value = draft ?? content

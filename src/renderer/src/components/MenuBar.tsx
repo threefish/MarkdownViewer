@@ -13,6 +13,9 @@ export type MenuAction =
   | 'toggle-edit'
   | 'toggle-edit-preview'
   | 'export-pdf'
+  | 'mm-export-xmind'
+  | 'mm-export-png'
+  | 'mm-export-svg'
   | 'close-tab'
   | 'toggle-tabs-list'
   | 'settings'
@@ -139,6 +142,13 @@ function buildGroups(state: MenuState): Group[] {
           disabled: !state.canExportPdf,
           action: 'export-pdf'
         },
+        ...(state.mindMap
+          ? [
+              { label: '导出 XMind…', action: 'mm-export-xmind' as MenuAction },
+              { label: '导出 PNG 图片…', action: 'mm-export-png' as MenuAction },
+              { label: '导出 SVG 图片…', action: 'mm-export-svg' as MenuAction }
+            ]
+          : []),
         {
           label: '关闭标签页',
           hint: 'Ctrl+W',

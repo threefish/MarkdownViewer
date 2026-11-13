@@ -1,80 +1,179 @@
 {
-  "layout": "mindMap",
+  "layout": "timeline",
   "root": {
     "data": {
-      "text": "md-viewer 脑图"
+      "text": "<p>md-viewer 脑图</p>",
+      "expand": true,
+      "uid": "72aa6637-27e3-4d18-b50d-ef84bac1415e",
+      "richText": true,
+      "isActive": false,
+      "fillColor": "#5b8ff9",
+      "borderWidth": 2,
+      "borderColor": "#2ecc71"
     },
     "children": [
       {
         "data": {
-          "text": "编辑能力"
+          "text": "<p>编辑能力</p>",
+          "uid": "3ed6eae4-3a41-4660-b0c7-887c2e680cb1",
+          "richText": true,
+          "expand": true,
+          "isActive": false
         },
         "children": [
           {
             "data": {
-              "text": "双击节点编辑文字"
-            }
+              "text": "<p>双击节点编辑文字</p>",
+              "uid": "eb8a3eeb-23e0-4d56-9b29-4dc66dfbd4b2",
+              "richText": true,
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
           },
           {
             "data": {
-              "text": "Tab 插入子主题"
-            }
+              "text": "<p>Tab 插入子主题</p>",
+              "uid": "5aefa449-b3a1-4220-8a8d-a39fda07606d",
+              "richText": true,
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
           },
           {
             "data": {
-              "text": "Enter 插入同级主题"
-            }
+              "text": "<p>Enter 插入同级主题</p>",
+              "uid": "86da7aef-e673-4b49-b83b-371b9df0450b",
+              "richText": true,
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
           },
           {
             "data": {
-              "text": "Delete 删除节点"
-            }
+              "text": "<p>Delete 删除节点</p>",
+              "uid": "f1e6ef2d-393e-4996-bc74-8dc0de73e4ed",
+              "richText": true,
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
           },
           {
             "data": {
-              "text": "Ctrl+Z / Ctrl+Y 撤销重做"
-            }
+              "text": "<p>Ctrl+Z / Ctrl+Y 撤销重做</p>",
+              "uid": "e4afa26d-c0c7-4cf4-9e90-8f5aa0cadf33",
+              "richText": true,
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
           }
         ]
       },
       {
         "data": {
-          "text": "布局与导出"
+          "text": "<p>布局与导出</p>",
+          "uid": "31e52c8a-99fa-44d7-85ea-e4c7f9994b4c",
+          "richText": true,
+          "expand": true,
+          "isActive": false
         },
         "children": [
           {
             "data": {
-              "text": "切换思维导图 / 逻辑图 / 组织结构图"
-            }
+              "text": "<p>切换思维导图 / 逻辑图 / 组织结构图</p>",
+              "uid": "64a08eb6-84d8-4d20-a53f-ba3fd1aab44f",
+              "richText": true,
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
           },
           {
             "data": {
-              "text": "导出 XMind / PNG / SVG"
-            }
+              "text": "<p>导出 XMind / PNG / SVG</p>",
+              "uid": "346a0d10-ff49-48fb-91ab-04525997fe63",
+              "richText": true,
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
           }
         ]
       },
       {
         "data": {
-          "text": "文件格式"
+          "text": "<p>文件</p><p>格式</p>",
+          "uid": "0a17a5b9-fafd-48fb-bcbc-db3fa5e448bc",
+          "richText": true,
+          "expand": true,
+          "isActive": false,
+          "color": "#1abc9c",
+          "fillColor": "#ffffff",
+          "borderColor": "#2ecc71",
+          "fontFamily": "宋体, SimSun",
+          "fontSize": 26,
+          "fontWeight": "bold",
+          "borderWidth": 2,
+          "borderRadius": 5,
+          "shape": "circle"
         },
         "children": [
           {
             "data": {
-              "text": ".smm 本地保存"
-            }
+              "text": "<p>.smm 本地保存</p>",
+              "uid": "352ec8b0-0e05-4652-87eb-2ee270a236f3",
+              "richText": true,
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
           },
           {
             "data": {
-              "text": ".xmind 导入后另存为 .smm"
-            }
+              "text": "<p>.xmind 导入后另存为 .smm</p>",
+              "uid": "15c33fd2-34cd-468c-958d-363e021496ac",
+              "richText": true,
+              "expand": true,
+              "isActive": false
+            },
+            "children": []
           }
         ]
       }
-    ]
+    ],
+    "smmVersion": "0.14.0"
   },
   "theme": {
-    "template": "default",
+    "template": "autumn",
     "config": {}
+  },
+  "view": {
+    "transform": {
+      "scaleX": 1,
+      "scaleY": 1,
+      "shear": 0,
+      "rotate": 0,
+      "translateX": 0,
+      "translateY": 0,
+      "originX": 0,
+      "originY": 0,
+      "a": 1,
+      "b": 0,
+      "c": 0,
+      "d": 1,
+      "e": 0,
+      "f": 0
+    },
+    "state": {
+      "scale": 1,
+      "x": 0,
+      "y": 0,
+      "sx": -436,
+      "sy": 30
+    }
   }
 }

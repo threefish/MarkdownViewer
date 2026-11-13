@@ -1448,6 +1448,7 @@ body.split-resizing .workspace > :not(.split-resizer) {
   background: var(--bg-elev);
   opacity: 0.9;
   transition: opacity 0.15s ease;
+  user-select: none;
 }
 
 .mindmap-toolbar:hover {
@@ -1562,35 +1563,312 @@ body.split-resizing .workspace > :not(.split-resizer) {
   color: var(--danger);
 }
 
-.editor-status {
-  flex: 0 0 auto;
+/* ---------- mind map node style panel ---------- */
+
+.mindmap-style-panel {
+  position: fixed;
+  z-index: 60;
+  width: 258px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 8px 9px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-elev);
+  box-shadow: 0 12px 30px color-mix(in srgb, #000 14%, transparent);
+  font-size: 12px;
+  color: var(--text-2);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.msp-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  height: 26px;
-  padding: 0 16px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-sidebar);
-  font-size: 11.5px;
-  color: var(--text-3);
-  white-space: nowrap;
-  overflow: hidden;
+  gap: 6px;
+  padding: 1px 1px 7px;
+  cursor: move;
+  user-select: none;
+  touch-action: none;
 }
 
-.editor-status .status-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  flex: 0 1 auto;
+.msp-title {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.msp-hint {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-3);
 }
 
-.editor-status .status-actions .mini-btn {
+.msp-close {
   flex: 0 0 auto;
+  width: 22px;
   height: 22px;
+  margin-left: auto;
+  border-radius: 6px;
+  color: var(--text-3);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.msp-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.msp-section {
+  padding: 8px 9px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.msp-section + .msp-section {
+  margin-top: 7px;
+}
+
+.msp-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
   font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.msp-section-title::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.7;
+}
+
+.msp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.msp-row:last-child {
+  margin-bottom: 0;
+}
+
+.msp-label {
+  flex: 0 0 auto;
+  width: 30px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.msp-label-inline {
+  width: auto;
+  margin-left: 6px;
+}
+
+.msp-select-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.msp-select {
+  width: 100%;
+  height: 27px;
+  padding: 0 22px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  text-overflow: ellipsis;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.msp-select:hover {
+  border-color: var(--border-strong);
+}
+
+.msp-select:focus,
+.msp-num:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.msp-select-wrap:focus-within .msp-chevron {
+  color: var(--accent);
+}
+
+.msp-chevron {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.msp-num {
+  width: 52px;
+  height: 27px;
+  padding: 0 4px 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.msp-toggles {
+  display: flex;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.msp-toggle {
+  width: 27px;
+  height: 27px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.msp-toggle:hover {
+  border-color: var(--border-strong);
+}
+
+.msp-toggle.on {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.msp-color {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 27px;
+  padding: 1px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  cursor: pointer;
+}
+
+.msp-color::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.msp-color::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.msp-hex {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.msp-chip {
+  flex: 0 0 auto;
+  height: 27px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  color: var(--text-2);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.msp-chip:hover {
+  border-color: var(--border-strong);
+}
+
+.msp-chip.on {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.msp-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 0 36px;
+}
+
+.msp-swatches + .msp-row {
+  margin-top: 7px;
+}
+
+.msp-swatch {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.msp-swatch:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.msp-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+}
+
+.msp-reset {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.msp-reset:hover {
+  border-color: var(--border-strong);
+  background: var(--hover);
+  color: var(--text);
+}
+
+.msp-close:focus-visible,
+.msp-toggle:focus-visible,
+.msp-chip:focus-visible,
+.msp-swatch:focus-visible,
+.msp-reset:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* ---------- pdf viewer ---------- */
@@ -1956,6 +2234,11 @@ body.split-resizing .workspace > :not(.split-resizer) {
 .main.editing .float-actions,
 .main.has-editor .float-actions {
   bottom: 48px;
+}
+
+/* 画板右下角是 Excalidraw 自带的缩放/帮助岛屿，悬浮按钮上移避让 */
+.main.has-drawing .float-actions {
+  bottom: 64px;
 }
 
 .float-btn {
@@ -3569,6 +3852,59 @@ body.settings-resizing .settings-resizer::after {
   background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
+.shortcut-help {
+  position: fixed;
+  z-index: 120;
+  width: 268px;
+  padding: 6px 9px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: var(--bg-elev);
+  box-shadow: 0 14px 34px rgba(12, 16, 22, 0.16);
+}
+
+.shortcut-help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 1px 0 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.shortcut-help .shortcut-row {
+  min-height: 23px;
+  font-size: 12px;
+}
+
+.shortcut-help .shortcut-help-head + .shortcut-row {
+  margin-top: 3px;
+}
+
+.shortcut-help-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.shortcut-help-close:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
 /* ---------- content width control ---------- */
 
 .width-control {
@@ -3895,7 +4231,6 @@ body.settings-resizing .settings-resizer::after {
 /* ---------- 禅模式 ---------- */
 
 .app.zen .mindmap-toolbar,
-.app.zen .editor-status,
 .app.zen .doc-foot {
   display: none;
 }

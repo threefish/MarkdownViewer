@@ -17,10 +17,18 @@ import { AboutDialog } from './components/AboutDialog'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import type { EditorHandle } from './components/Editor'
 import type { MindMapHandle } from './components/MindMapPane'
+import type { ExcalidrawHandle } from './components/ExcalidrawPane'
 import { EmptyState } from './components/EmptyState'
 import { HiddenRestoreDialog } from './components/HiddenRestoreDialog'
 import { InsertAssetDialog } from './components/InsertAssetDialog'
-import { CloseIcon, EyeIcon, PencilIcon, SearchIcon, SplitIcon } from './components/Icons'
+import {
+  CenterIcon,
+  CloseIcon,
+  EyeIcon,
+  PencilIcon,
+  SearchIcon,
+  SplitIcon
+} from './components/Icons'
 import { clearImageViewState, ImageView } from './components/ImageView'
 import type { MenuAction, MenuState } from './components/MenuBar'
 import { MdToolbar, type InsertKind } from './components/MdToolbar'
@@ -248,6 +256,7 @@ export default function App(): JSX.Element {
   const readerRef = useRef<HTMLDivElement>(null)
   const editorHandle = useRef<EditorHandle | null>(null)
   const mindMapHandle = useRef<MindMapHandle | null>(null)
+  const excalidrawHandle = useRef<ExcalidrawHandle | null>(null)
   const workspaceRef = useRef<HTMLDivElement>(null)
   const previewHandle = useRef<SplitPreviewHandle | null>(null)
   const leaderRef = useRef<'editor' | 'preview'>('editor')
@@ -1590,6 +1599,18 @@ export default function App(): JSX.Element {
         case 'export-pdf':
           void exportPdf()
           break
+        case 'mm-export-xmind': {
+          activeMindMap()?.exportAs('xmind')
+          break
+        }
+        case 'mm-export-png': {
+          activeMindMap()?.exportAs('png')
+          break
+        }
+        case 'mm-export-svg': {
+          activeMindMap()?.exportAs('svg')
+          break
+        }
         case 'close-tab':
           if (activeIdRef.current) requestCloseTab(activeIdRef.current)
           break
@@ -2038,7 +2059,6 @@ export default function App(): JSX.Element {
   const pdfJumpTarget = active && pdfJump?.path === active.path ? pdfJump : null
   const activeTier = active ? docTier(active.content.length) : 'normal'
   const activeLite = activeTier !== 'normal'
-  const activeHuge = activeTier === 'huge'
   const activeLongLine = useMemo(() => {
     const content = active?.content ?? ''
     return activeLite ? hasVeryLongLine(content) : false
@@ -2052,14 +2072,6 @@ export default function App(): JSX.Element {
     !activeIsPdf &&
     !activeIsImage &&
     (!activeIsMd || mdAsSource || active.editing)
-  const codeReadOnly =
-    !!active &&
-    !activeIsDrawing &&
-    !activeIsMindMap &&
-    !activeIsPdf &&
-    !activeIsImage &&
-    !active.editing &&
-    (!activeIsMd || mdAsSource)
   const showDrawing = !!active && activeIsDrawing
   const showMindMap = !!active && activeIsMindMap
   const showPdf = !!active && activeIsPdf
@@ -2147,52 +2159,6 @@ export default function App(): JSX.Element {
     },
     [persistSplitRatio, splitRatio]
   )
-
-  const statusLeft = !active
-    ? ''
-    : activeIsPdf
-      ? `${active.name} · PDF${
-          active.deleted ? ' · 文件已被删除' : active.externalChanged ? ' · 文件已在外部修改' : ' · 只读'
-        }`
-      : activeIsDrawing
-        ? `${active.name} · 画板${active.editing ? '' : ' · 只读'}${
-            dirty ? ' · 未保存的修改' : ''
-          }${active.externalChanged ? ' · 文件已在外部修改' : ''}`
-        : activeIsMindMap
-          ? `${active.name} · 脑图${active.editing ? '' : ' · 只读'}${
-              dirty ? ' · 未保存的修改' : ''
-            }${active.externalChanged ? ' · 文件已在外部修改' : ''}`
-          : activeLite
-          ? `${active.name} · 大文件模式${
-              active.editing
-                ? `${dirty ? ' · 未保存的修改' : ''}${
-                    active.externalChanged ? ' · 文件已在外部修改' : ''
-                  }`
-                : ' · 只读'
-            }`
-          : codeReadOnly
-            ? `${active.name} · 只读`
-            : `${dirty ? '未保存的修改' : '已保存'}${
-                active.externalChanged ? ' · 文件已在外部修改' : ''
-              }`
-
-  const statusRight = activeIsPdf
-    ? '只读 · 工具栏翻页 / 缩放'
-    : activeIsDrawing
-      ? active?.editing
-        ? 'Ctrl+S 保存 · Ctrl+E 阅读'
-        : 'Ctrl+E 编辑'
-      : activeIsMindMap
-        ? active?.editing
-          ? 'Ctrl+S 保存 · Ctrl+E 阅读'
-          : 'Ctrl+E 编辑'
-        : activeLite
-        ? active?.editing
-          ? 'Ctrl+S 保存 · Ctrl+E 阅读 · Ctrl+F 在编辑器内查找'
-          : 'Ctrl+E 编辑 · Ctrl+F 查找'
-        : codeReadOnly
-          ? 'Ctrl+E 编辑 · Ctrl+F 查找'
-          : 'Ctrl+S 保存 · Ctrl+E 阅读 · Ctrl+F 在编辑器内查找'
 
   const tabInfos: TabInfo[] = tabs.map((tab) => ({
     path: tab.path,
@@ -2283,7 +2249,7 @@ export default function App(): JSX.Element {
         <div
           className={`main${active?.editing ? ' editing' : ''}${
             showEditor || showDrawing || showPdf ? ' has-editor' : ''
-          }${splitActive ? ' split' : ''}`}
+          }${activeIsDrawing ? ' has-drawing' : ''}${splitActive ? ' split' : ''}`}
         >
           {zenPath ? null : (
             <TabBar
@@ -2480,19 +2446,11 @@ export default function App(): JSX.Element {
                   editing={active.editing}
                   theme={theme}
                   onChange={(next) => updateTab(active.path, { draft: next })}
+                  onReady={(handle) => {
+                    excalidrawHandle.current = handle
+                  }}
                 />
               </Suspense>
-              <div className="editor-status">
-                <span>{statusLeft}</span>
-                <span className="status-actions">
-                  {statusRight}
-                  {activeHuge && !active.editing ? (
-                    <button type="button" className="mini-btn" onClick={toggleEdit}>
-                      启用编辑
-                    </button>
-                  ) : null}
-                </span>
-              </div>
             </div>
           ) : null}
 
@@ -2512,17 +2470,6 @@ export default function App(): JSX.Element {
                   }}
                 />
               </Suspense>
-              <div className="editor-status">
-                <span>{statusLeft}</span>
-                <span className="status-actions">
-                  {statusRight}
-                  {activeHuge && !active.editing ? (
-                    <button type="button" className="mini-btn" onClick={toggleEdit}>
-                      启用编辑
-                    </button>
-                  ) : null}
-                </span>
-              </div>
             </div>
           ) : null}
 
@@ -2616,6 +2563,19 @@ export default function App(): JSX.Element {
               >
                 <EyeIcon />
               </button>
+              {activeIsMindMap || activeIsDrawing ? (
+                <button
+                  type="button"
+                  className="float-btn"
+                  title="居中显示（重置视图）"
+                  onClick={() => {
+                    if (activeIsDrawing) excalidrawHandle.current?.center()
+                    else mindMapHandle.current?.center()
+                  }}
+                >
+                  <CenterIcon />
+                </button>
+              ) : null}
               {splitAllowed ? (
                 <button
                   type="button"
