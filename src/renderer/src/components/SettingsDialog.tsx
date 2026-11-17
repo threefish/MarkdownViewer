@@ -19,10 +19,10 @@ interface Props {
 }
 
 const ASSOC_TEXT: Record<AssocInfo['state'], string> = {
-  ok: '已关联，双击 .md 会使用本应用打开',
-  stale: '关联指向旧位置（程序目录被移动过），请修复',
-  notRegistered: '尚未注册 .md 文件关联',
-  otherApp: '系统仍优先用其他应用打开 .md'
+  ok: '已注册到当前用户，可在「打开方式」中选择本应用',
+  stale: '注册信息不完整或指向旧位置，请修复',
+  notRegistered: '尚未注册到当前用户',
+  otherApp: '已注册为「打开方式」候选，不影响系统默认程序'
 }
 
 const THEME_OPTIONS: Array<{ value: ThemePreference; label: string; preview: ThemePreview | null }> = [
@@ -257,8 +257,8 @@ export function SettingsDialog({
       setAssoc(next)
       setNote(
         action === 'register'
-          ? '已写入当前用户的注册表。若双击仍打开其他应用，请在“系统默认应用”里为 .md 选择 Markdown Viewer。'
-          : '已移除本应用的文件关联。'
+          ? '已完成当前用户注册：设置 → 应用、开始菜单与「打开方式」中均可见；系统默认程序未被修改。'
+          : '已撤销当前用户注册，相关注册表项与开始菜单快捷方式已移除。'
       )
     } catch (err) {
       setNote(errorMessage(err))
@@ -554,14 +554,11 @@ export function SettingsDialog({
         </section>
 
         <section className="settings-card">
-          <h3 className="settings-card-title">文件关联</h3>
+          <h3 className="settings-card-title">系统集成</h3>
           <div className="assoc-status">
             <span className={`dot ${assoc?.state ?? 'unknown'}`} />
             <span>{assoc ? ASSOC_TEXT[assoc.state] : '正在读取…'}</span>
           </div>
-          {assoc?.state === 'otherApp' && assoc.userChoiceProgId ? (
-            <div className="hint">系统当前关联：{assoc.userChoiceProgId}</div>
-          ) : null}
           <div className="assoc-actions">
             <button
               type="button"
@@ -569,19 +566,19 @@ export function SettingsDialog({
               disabled={busy}
               onClick={() => void act('register')}
             >
-              {assoc?.state === 'stale' ? '修复关联' : '注册关联'}
+              {assoc?.state === 'stale' ? '修复注册' : '注册到 Windows'}
             </button>
             <button type="button" className="btn" disabled={busy} onClick={() => void act('unregister')}>
-              取消关联
-            </button>
-            <button type="button" className="btn" onClick={() => void window.mdv.openDefaultApps()}>
-              系统默认应用
+              撤销注册
             </button>
           </div>
           <div className="hint">
-            Windows 10/11 不允许程序静默设为默认：注册后若仍被其他应用接管，请在系统“默认应用”中为 .md
-            选择 Markdown Viewer，只需一次。
+            只写入当前用户（HKCU），不改动任何文件的默认打开方式。所有支持的格式都会出现在「打开方式」候选中，
+            并可在「设置 → 应用」和开始菜单中看到 Markdown Viewer；系统卸载入口也能执行同样的撤销。
           </div>
+          {assoc?.state === 'otherApp' && assoc.userChoiceProgId ? (
+            <div className="hint">.md 当前默认程序：{assoc.userChoiceProgId}（本应用不修改它）</div>
+          ) : null}
           {note ? <div className="note">{note}</div> : null}
         </section>
 

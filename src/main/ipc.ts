@@ -823,13 +823,6 @@ export function registerIpc(getWin: WindowGetter, ensureMainWindow: () => void):
   ipcMain.handle('assoc:status', (): Promise<AssocInfo> => getAssocInfo())
   ipcMain.handle('assoc:register', (): Promise<AssocInfo> => registerAssociation())
   ipcMain.handle('assoc:unregister', (): Promise<AssocInfo> => unregisterAssociation())
-  ipcMain.handle('assoc:open-defaults', async () => {
-    try {
-      await shell.openExternal('ms-settings:defaultapps?registeredAppUser=md-viewer')
-    } catch {
-      await shell.openExternal('ms-settings:defaultapps').catch(() => {})
-    }
-  })
 
   ipcMain.handle('shell:open-external', async (_event, url: string) => {
     if (typeof url !== 'string' || !/^(https?|mailto):/i.test(url)) return

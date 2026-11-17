@@ -4,6 +4,7 @@ import { findOpenArgument } from './argv'
 import { registerIpc, setPendingFile } from './ipc'
 import { registerScheme, setupProtocol } from './protocol'
 import { applyNativeTheme, getSettings, resolveThemeMode } from './settings'
+import { unregisterAssociation } from './registry'
 import { isXmindFile } from '../shared/fileKinds'
 import {
   createMainWindow,
@@ -56,56 +57,70 @@ function ensureMainWindow(): void {
   setupTray()
 }
 
-const gotLock = app.requestSingleInstanceLock()
-
-if (!gotLock) {
-  app.exit(0)
-} else {
-  const launchTarget = findOpenArgument(process.argv, process.cwd(), app.isPackaged)
-  const launchInZen = shouldOpenInZen(launchTarget)
-  if (!launchInZen) setPendingFile(launchTarget)
-
-  app.on('second-instance', (_event, argv, cwd) => {
-    const target = findOpenArgument(argv, cwd, app.isPackaged)
-    if (shouldOpenInZen(target)) {
-      openInZen(target)
-      return
-    }
-    ensureMainWindow()
-    const win = getMainWindow()
-    if (!win || !target) return
-    if (win.webContents.isLoading()) {
-      win.webContents.once('did-finish-load', () => {
-        if (!win.isDestroyed()) win.webContents.send('doc:open-request', target)
+function bootstrap(): void {
+  if (process.argv.includes('--unregister')) {
+    void unregisterAssociation()
+      .then(() => app.exit(0))
+      .catch((err) => {
+        console.error('[registry] unregister failed', err)
+        app.exit(1)
       })
-    } else {
-      win.webContents.send('doc:open-request', target)
-    }
-  })
+    return
+  }
 
-  app.whenReady().then(() => {
-    app.setAppUserModelId('com.local.mdviewer')
-    Menu.setApplicationMenu(null)
+  const gotLock = app.requestSingleInstanceLock()
 
-    const settings = getSettings()
-    applyNativeTheme(settings.themeMode)
+  if (!gotLock) {
+    app.exit(0)
+  } else {
+    const launchTarget = findOpenArgument(process.argv, process.cwd(), app.isPackaged)
+    const launchInZen = shouldOpenInZen(launchTarget)
+    if (!launchInZen) setPendingFile(launchTarget)
 
-    setupProtocol()
-    registerIpc(getMainWindow, ensureMainWindow)
+    app.on('second-instance', (_event, argv, cwd) => {
+      const target = findOpenArgument(argv, cwd, app.isPackaged)
+      if (shouldOpenInZen(target)) {
+        openInZen(target)
+        return
+      }
+      ensureMainWindow()
+      const win = getMainWindow()
+      if (!win || !target) return
+      if (win.webContents.isLoading()) {
+        win.webContents.once('did-finish-load', () => {
+          if (!win.isDestroyed()) win.webContents.send('doc:open-request', target)
+        })
+      } else {
+        win.webContents.send('doc:open-request', target)
+      }
+    })
 
-    if (launchInZen && launchTarget) {
-      createZenWindow(launchTarget, resolveThemeMode(settings.themeMode))
-    } else {
-      createMainWindow(resolveThemeMode(settings.themeMode), {
-        bounds: settings.windowBounds,
-        maximized: settings.windowMaximized,
-        remember: settings.rememberWindowBounds
-      })
-      setupTray()
-    }
-  })
+    app.whenReady().then(() => {
+      app.setAppUserModelId('com.local.mdviewer')
+      Menu.setApplicationMenu(null)
 
-  app.on('window-all-closed', () => {
-    app.quit()
-  })
+      const settings = getSettings()
+      applyNativeTheme(settings.themeMode)
+
+      setupProtocol()
+      registerIpc(getMainWindow, ensureMainWindow)
+
+      if (launchInZen && launchTarget) {
+        createZenWindow(launchTarget, resolveThemeMode(settings.themeMode))
+      } else {
+        createMainWindow(resolveThemeMode(settings.themeMode), {
+          bounds: settings.windowBounds,
+          maximized: settings.windowMaximized,
+          remember: settings.rememberWindowBounds
+        })
+        setupTray()
+      }
+    })
+
+    app.on('window-all-closed', () => {
+      app.quit()
+    })
+  }
 }
+
+bootstrap()

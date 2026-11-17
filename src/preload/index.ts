@@ -42,7 +42,6 @@ const api: MdvApi = {
   assocStatus: () => ipcRenderer.invoke('assoc:status'),
   assocRegister: () => ipcRenderer.invoke('assoc:register'),
   assocUnregister: () => ipcRenderer.invoke('assoc:unregister'),
-  openDefaultApps: () => ipcRenderer.invoke('assoc:open-defaults'),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   openPath: (path) => ipcRenderer.invoke('shell:open-path', path),
   appInfo: () => ipcRenderer.invoke('app:info'),

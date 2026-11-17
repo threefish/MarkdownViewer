@@ -1,5 +1,5 @@
 {
-  "layout": "timeline",
+  "layout": "catalogOrganization",
   "root": {
     "data": {
       "text": "<p>md-viewer 脑图</p>",
@@ -172,8 +172,8 @@
       "scale": 1,
       "x": 0,
       "y": 0,
-      "sx": -436,
-      "sy": 30
+      "sx": -284,
+      "sy": 5
     }
   }
 }

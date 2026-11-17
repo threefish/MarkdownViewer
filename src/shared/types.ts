@@ -249,7 +249,6 @@ export interface MdvApi {
   assocStatus(): Promise<AssocInfo>
   assocRegister(): Promise<AssocInfo>
   assocUnregister(): Promise<AssocInfo>
-  openDefaultApps(): Promise<void>
   openExternal(url: string): Promise<void>
   openPath(path: string): Promise<void>
   appInfo(): Promise<AppInfo>
